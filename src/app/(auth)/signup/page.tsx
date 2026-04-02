@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -20,8 +20,20 @@ export default function SignupPage() {
   const supabase = createClient()
 
   const [step, setStep] = useState(0) // 0 = account, 1 = workspace, 2 = done, 3 = confirm email
+  const [alreadyAuthed, setAlreadyAuthed] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+
+  // If user is already logged in (e.g. they signed up but workspace creation failed),
+  // skip straight to the workspace creation step
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setAlreadyAuthed(true)
+        setStep(1)
+      }
+    })
+  }, [])
   const [workspaceName, setWorkspaceName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,6 +56,12 @@ export default function SignupPage() {
   async function handleSignup() {
     setLoading(true)
     setError(null)
+
+    // Skip auth steps if user is already logged in
+    if (alreadyAuthed) {
+      await createWorkspace()
+      return
+    }
 
     // Step 1: create auth user
     const { error: authError } = await supabase.auth.signUp({ email, password })
@@ -72,6 +90,10 @@ export default function SignupPage() {
     }
 
     // Step 3: create workspace server-side
+    await createWorkspace()
+  }
+
+  async function createWorkspace() {
     const res = await fetch('/api/workspace/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
