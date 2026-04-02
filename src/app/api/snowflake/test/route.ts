@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { testSnowflakeConnection, sampleSnowflakeTable, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
+import { testSnowflakeConnection, fetchTableColumns, sampleSnowflakeTable, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -9,10 +9,11 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     creds: SnowflakeCreds
-    mapping: SnowflakeMapping
+    table?: string
+    mapping?: SnowflakeMapping
   }
 
-  const { creds, mapping } = body
+  const { creds, table, mapping } = body
 
   if (!creds?.account || !creds?.username || !creds?.password || !creds?.warehouse) {
     return NextResponse.json({ error: 'Missing required credential fields' }, { status: 400 })
@@ -24,7 +25,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, step: 'connection', error: connResult.error }, { status: 200 })
   }
 
-  // Step 2: sample the table if mapping provided
+  // Column detection mode: table provided but no full mapping
+  if (table && !(mapping?.colBrand && mapping?.colDate)) {
+    const colResult = await fetchTableColumns(creds, table)
+    if (!colResult.ok) {
+      return NextResponse.json({ ok: false, step: 'table', error: colResult.error }, { status: 200 })
+    }
+    return NextResponse.json({ ok: true, columns: colResult.columns ?? [] })
+  }
+
+  // Full test mode: sample the table with mapping
   if (mapping?.table && mapping?.colBrand && mapping?.colDate) {
     const sampleResult = await sampleSnowflakeTable(creds, mapping)
     if (!sampleResult.ok) {

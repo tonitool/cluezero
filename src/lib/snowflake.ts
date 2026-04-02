@@ -51,6 +51,36 @@ export async function testSnowflakeConnection(
   })
 }
 
+export async function fetchTableColumns(
+  creds: SnowflakeCreds,
+  table: string
+): Promise<{ ok: boolean; columns?: string[]; error?: string }> {
+  return new Promise((resolve) => {
+    const conn = makeConnection(creds)
+    conn.connect((err) => {
+      if (err) {
+        resolve({ ok: false, error: err.message })
+        return
+      }
+      const fullTable = `${creds.database}.${creds.schema}.${table}`
+      conn.execute({
+        sqlText: `SELECT * FROM ${fullTable} LIMIT 1`,
+        complete: (execErr, _stmt, rows) => {
+          conn.destroy(() => {})
+          if (execErr) {
+            resolve({ ok: false, error: execErr.message })
+            return
+          }
+          const columns = rows && rows.length > 0
+            ? Object.keys(rows[0] as Record<string, unknown>)
+            : []
+          resolve({ ok: true, columns })
+        },
+      })
+    })
+  })
+}
+
 export async function sampleSnowflakeTable(
   creds: SnowflakeCreds,
   mapping: SnowflakeMapping

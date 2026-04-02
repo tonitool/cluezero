@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, ChevronRight, Loader2, XCircle, Database, Table2, Key } from 'lucide-react'
+import { CheckCircle2, ChevronRight, Loader2, XCircle, Database, Key } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -58,7 +58,7 @@ function SnowflakeLogo({ className }: { className?: string }) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = 'credentials' | 'mapping' | 'test' | 'success'
+type Step = 'credentials' | 'mapping' | 'success'
 
 type Credentials = {
   account: string
@@ -68,10 +68,10 @@ type Credentials = {
   warehouse: string
   database: string
   schema: string
+  table: string
 }
 
 type Mapping = {
-  table: string
   brandCol: string
   dateCol: string
   headlineCol: string
@@ -84,23 +84,32 @@ type Mapping = {
 }
 
 const STEPS: { id: Step; label: string; icon: React.ElementType }[] = [
-  { id: 'credentials', label: 'Credentials', icon: Key },
-  { id: 'mapping',     label: 'Table Mapping', icon: Table2 },
-  { id: 'test',        label: 'Test & Connect', icon: Database },
+  { id: 'credentials', label: 'Connect', icon: Key },
+  { id: 'mapping',     label: 'Column Mapping', icon: Database },
 ]
 
-const STEP_ORDER: Step[] = ['credentials', 'mapping', 'test', 'success']
+// ─── Fuzzy column matching ────────────────────────────────────────────────────
 
-// ─── Test checks ─────────────────────────────────────────────────────────────
-
-const TEST_CHECKS = [
-  'Resolving account identifier…',
-  'Authenticating user credentials…',
-  'Connecting to warehouse…',
-  'Verifying database & schema access…',
-  'Validating table mapping…',
-  'Running sample query (LIMIT 5)…',
-]
+function autoFillMapping(columns: string[], currentMapping: Mapping): Mapping {
+  function find(keywords: string[]): string {
+    for (const kw of keywords) {
+      const match = columns.find(c => c.toLowerCase().includes(kw.toLowerCase()))
+      if (match) return match
+    }
+    return ''
+  }
+  return {
+    brandCol:       find(['brand', 'advertiser', 'company'])       || currentMapping.brandCol,
+    dateCol:        find(['date', 'week', 'day', 'month'])         || currentMapping.dateCol,
+    headlineCol:    find(['headline', 'creative', 'ad_name', 'title']) || currentMapping.headlineCol,
+    spendCol:       find(['spend', 'cost', 'budget'])              || currentMapping.spendCol,
+    impressionsCol: find(['impression', 'impr'])                   || currentMapping.impressionsCol,
+    reachCol:       find(['reach', 'unique'])                      || currentMapping.reachCol,
+    piCol:          find(['_pi', 'pi_', 'performance_index', 'perf_index', 'pi']) || currentMapping.piCol,
+    funnelCol:      find(['funnel', 'stage', 'objective'])         || currentMapping.funnelCol,
+    topicCol:       find(['topic', 'category', 'theme'])           || currentMapping.topicCol,
+  }
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -114,24 +123,27 @@ interface Props {
 export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspaceId }: Props) {
   const [step, setStep] = useState<Step>('credentials')
   const [creds, setCreds] = useState<Credentials>({
-    account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '',
+    account: '', username: '', password: '', role: '',
+    warehouse: '', database: '', schema: '', table: '',
   })
   const [mapping, setMapping] = useState<Mapping>({
-    table: '', brandCol: 'BRAND', dateCol: 'DATE',
-    headlineCol: 'HEADLINE', spendCol: 'SPEND', impressionsCol: 'IMPRESSIONS',
-    reachCol: 'REACH', piCol: 'PI', funnelCol: 'FUNNEL', topicCol: 'TOPIC',
+    brandCol: '', dateCol: '', headlineCol: '',
+    spendCol: '', impressionsCol: '', reachCol: '',
+    piCol: '', funnelCol: '', topicCol: '',
   })
-  const [testChecks, setTestChecks] = useState<'idle' | 'running' | 'done' | 'failed'>('idle')
-  const [completedChecks, setCompletedChecks] = useState<number>(0)
-  const [testError, setTestError] = useState<string | null>(null)
+  const [detecting, setDetecting] = useState(false)
+  const [detectError, setDetectError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [detectedColumns, setDetectedColumns] = useState<string[]>([])
 
   function resetSheet() {
     setStep('credentials')
-    setCreds({ account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '' })
-    setMapping({ table: '', brandCol: 'BRAND', dateCol: 'DATE', headlineCol: 'HEADLINE', spendCol: 'SPEND', impressionsCol: 'IMPRESSIONS', reachCol: 'REACH', piCol: 'PI', funnelCol: 'FUNNEL', topicCol: 'TOPIC' })
-    setTestChecks('idle')
-    setCompletedChecks(0)
-    setTestError(null)
+    setCreds({ account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '', table: '' })
+    setMapping({ brandCol: '', dateCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '' })
+    setDetecting(false)
+    setDetectError(null)
+    setSaving(false)
+    setDetectedColumns([])
   }
 
   function handleOpenChange(v: boolean) {
@@ -139,36 +151,22 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     onOpenChange(v)
   }
 
-  // ── Credentials step ──────────────────────────────────────────────────────
-
   const credsValid =
     creds.account.trim() &&
     creds.username.trim() &&
     creds.password.trim() &&
     creds.warehouse.trim() &&
     creds.database.trim() &&
-    creds.schema.trim()
+    creds.schema.trim() &&
+    creds.table.trim()
 
-  // ── Mapping step ──────────────────────────────────────────────────────────
+  const mappingValid = mapping.brandCol.trim() && mapping.dateCol.trim()
 
-  const mappingValid = mapping.table.trim() && mapping.brandCol.trim() && mapping.dateCol.trim()
+  // ── Detect columns ────────────────────────────────────────────────────────
 
-  // ── Test step ─────────────────────────────────────────────────────────────
-
-  async function runTest() {
-    setTestChecks('running')
-    setCompletedChecks(0)
-    setTestError(null)
-
-    // Animate through the first 5 checks while the real API call is in-flight
-    let i = 0
-    const interval = setInterval(() => {
-      i++
-      if (i < TEST_CHECKS.length) {
-        setCompletedChecks(i)
-      }
-    }, 500)
-
+  async function detectColumns() {
+    setDetecting(true)
+    setDetectError(null)
     try {
       const res = await fetch('/api/snowflake/test', {
         method: 'POST',
@@ -183,75 +181,66 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             database:  creds.database,
             schema:    creds.schema,
           },
-          mapping: {
-            table:          mapping.table,
-            colBrand:       mapping.brandCol,
-            colDate:        mapping.dateCol,
-            colHeadline:    mapping.headlineCol    || undefined,
-            colSpend:       mapping.spendCol       || undefined,
-            colImpressions: mapping.impressionsCol || undefined,
-            colReach:       mapping.reachCol       || undefined,
-            colPi:          mapping.piCol          || undefined,
-            colFunnel:      mapping.funnelCol      || undefined,
-            colTopic:       mapping.topicCol       || undefined,
-          },
+          table: creds.table,
         }),
       })
-
-      clearInterval(interval)
       const data = await res.json()
-
-      if (data.ok) {
-        setCompletedChecks(TEST_CHECKS.length)
-        setTimeout(() => setTestChecks('done'), 300)
+      if (!data.ok) {
+        setDetectError(data.error ?? 'Connection failed')
       } else {
-        setTestError(data.error ?? 'Connection failed')
-        setTestChecks('failed')
+        const cols: string[] = data.columns ?? []
+        setDetectedColumns(cols)
+        setMapping(prev => autoFillMapping(cols, prev))
+        setStep('mapping')
       }
     } catch {
-      clearInterval(interval)
-      setTestError('Network error — could not reach the server')
-      setTestChecks('failed')
+      setDetectError('Network error — could not reach the server')
+    } finally {
+      setDetecting(false)
     }
   }
 
-  async function handleFinish() {
-    // Save the connection to Supabase if we have a workspaceId
-    if (workspaceId) {
-      await fetch('/api/snowflake/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId,
-          creds: {
-            account:   creds.account,
-            username:  creds.username,
-            password:  creds.password,
-            role:      creds.role || undefined,
-            warehouse: creds.warehouse,
-            database:  creds.database,
-            schema:    creds.schema,
-          },
-          mapping: {
-            table:          mapping.table,
-            colBrand:       mapping.brandCol,
-            colDate:        mapping.dateCol,
-            colHeadline:    mapping.headlineCol    || undefined,
-            colSpend:       mapping.spendCol       || undefined,
-            colImpressions: mapping.impressionsCol || undefined,
-            colReach:       mapping.reachCol       || undefined,
-            colPi:          mapping.piCol          || undefined,
-            colFunnel:      mapping.funnelCol      || undefined,
-            colTopic:       mapping.topicCol       || undefined,
-          },
-        }),
-      })
-    }
-    onConnected()
-    handleOpenChange(false)
-  }
+  // ── Save connection ───────────────────────────────────────────────────────
 
-  // ── Step index ────────────────────────────────────────────────────────────
+  async function saveConnection() {
+    setSaving(true)
+    try {
+      if (workspaceId) {
+        await fetch('/api/snowflake/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId,
+            creds: {
+              account:   creds.account,
+              username:  creds.username,
+              password:  creds.password,
+              role:      creds.role || undefined,
+              warehouse: creds.warehouse,
+              database:  creds.database,
+              schema:    creds.schema,
+            },
+            mapping: {
+              table:          creds.table,
+              colBrand:       mapping.brandCol,
+              colDate:        mapping.dateCol,
+              colHeadline:    mapping.headlineCol    || undefined,
+              colSpend:       mapping.spendCol       || undefined,
+              colImpressions: mapping.impressionsCol || undefined,
+              colReach:       mapping.reachCol       || undefined,
+              colPi:          mapping.piCol          || undefined,
+              colFunnel:      mapping.funnelCol      || undefined,
+              colTopic:       mapping.topicCol       || undefined,
+            },
+          }),
+        })
+      }
+      setStep('success')
+      onConnected()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const visibleStepIndex = STEPS.findIndex(s => s.id === step)
 
@@ -266,12 +255,11 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             <div>
               <SheetTitle className="text-base">Connect Snowflake</SheetTitle>
               <SheetDescription className="text-xs mt-0.5">
-                Query your data warehouse and map tables to competitive intelligence fields.
+                Enter your credentials and table name — ClueZero detects columns automatically.
               </SheetDescription>
             </div>
           </div>
 
-          {/* Step indicator */}
           {step !== 'success' && (
             <div className="flex items-center gap-1 mt-4">
               {STEPS.map((s, i) => {
@@ -306,11 +294,11 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
         {/* Body */}
         <div className="flex-1 px-6 py-5 overflow-y-auto">
 
-          {/* ── Step 1: Credentials ── */}
+          {/* ── Step 1: Connect ── */}
           {step === 'credentials' && (
             <div className="flex flex-col gap-5">
               <p className="text-xs text-muted-foreground">
-                Enter your Snowflake account details. Credentials are encrypted at rest and never stored in plain text.
+                Enter your Snowflake account details and the table to read. Credentials are encrypted at rest.
               </p>
 
               <fieldset className="flex flex-col gap-4">
@@ -398,44 +386,59 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
                   </div>
                 </div>
               </fieldset>
-            </div>
-          )}
-
-          {/* ── Step 2: Table Mapping ── */}
-          {step === 'mapping' && (
-            <div className="flex flex-col gap-5">
-              <p className="text-xs text-muted-foreground">
-                Tell ClueZero which table to read from and how to map your columns to competitive intelligence fields.
-              </p>
-
-              {/* Connection summary pill */}
-              <div className="flex items-center gap-2 bg-zinc-50 border border-border rounded-md px-3 py-2">
-                <SnowflakeLogo className="size-4" />
-                <span className="text-xs font-mono text-muted-foreground truncate">
-                  {creds.account} · {creds.database}.{creds.schema}
-                </span>
-              </div>
 
               <fieldset className="flex flex-col gap-4">
-                <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Source table</legend>
+                <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Source Table</legend>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="sf-table" className="text-xs">Table name <span className="text-rose-500">*</span></Label>
                   <Input
                     id="sf-table"
                     placeholder="AD_PERFORMANCE"
                     className="h-8 text-sm font-mono"
-                    value={mapping.table}
-                    onChange={e => setMapping(p => ({ ...p, table: e.target.value }))}
+                    value={creds.table}
+                    onChange={e => setCreds(p => ({ ...p, table: e.target.value }))}
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Full path: {creds.database || 'DB'}.{creds.schema || 'SCHEMA'}.{mapping.table || 'TABLE'}
+                    Full path: {creds.database || 'DB'}.{creds.schema || 'SCHEMA'}.{creds.table || 'TABLE'}
                   </p>
                 </div>
               </fieldset>
 
+              {detectError && (
+                <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2.5">
+                  <XCircle className="size-3.5 text-rose-500 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-rose-600">{detectError}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 2: Column Mapping ── */}
+          {step === 'mapping' && (
+            <div className="flex flex-col gap-5">
+              <p className="text-xs text-muted-foreground">
+                Column names were detected automatically. Review and adjust any mismatches, then save.
+              </p>
+
+              <div className="flex items-center gap-2 bg-zinc-50 border border-border rounded-md px-3 py-2">
+                <SnowflakeLogo className="size-4" />
+                <span className="text-xs font-mono text-muted-foreground truncate">
+                  {creds.account} · {creds.database}.{creds.schema}.{creds.table}
+                </span>
+              </div>
+
+              {detectedColumns.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  <span className="text-[10px] text-muted-foreground mr-1">Detected:</span>
+                  {detectedColumns.map(col => (
+                    <span key={col} className="text-[10px] font-mono bg-zinc-100 px-1.5 py-0.5 rounded">{col}</span>
+                  ))}
+                </div>
+              )}
+
               <fieldset className="flex flex-col gap-4">
                 <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Column mapping</legend>
-                <p className="text-[11px] text-muted-foreground -mt-2">Map your table columns to ClueZero fields. Leave blank to skip a field.</p>
+                <p className="text-[11px] text-muted-foreground -mt-2">Leave blank to skip optional fields.</p>
 
                 {([
                   { id: 'brandCol',       label: 'Brand / advertiser',     placeholder: 'BRAND',       required: true  },
@@ -465,81 +468,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             </div>
           )}
 
-          {/* ── Step 3: Test & Connect ── */}
-          {step === 'test' && (
-            <div className="flex flex-col gap-5">
-              {testChecks === 'idle' && (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    ClueZero will verify your credentials, check warehouse access, and run a sample query before saving the connection.
-                  </p>
-                  <div className="bg-zinc-50 border border-border rounded-lg p-4 flex flex-col gap-3">
-                    <SummaryRow label="Account" value={creds.account} />
-                    <SummaryRow label="User" value={creds.username} />
-                    <SummaryRow label="Warehouse" value={creds.warehouse} />
-                    <SummaryRow label="Table" value={`${creds.database}.${creds.schema}.${mapping.table}`} />
-                    <SummaryRow label="Brand column" value={mapping.brandCol} />
-                    <SummaryRow label="Date column" value={mapping.dateCol} />
-                  </div>
-                </>
-              )}
-
-              {(testChecks === 'running' || testChecks === 'done' || testChecks === 'failed') && (
-                <div className="flex flex-col gap-2">
-                  {TEST_CHECKS.map((check, i) => {
-                    const done    = completedChecks > i
-                    const active  = testChecks === 'running' && completedChecks === i
-                    const pending = completedChecks < i
-
-                    return (
-                      <div
-                        key={i}
-                        className={cn(
-                          'flex items-center gap-3 px-3 py-2.5 rounded-md text-xs transition-colors',
-                          done    && 'bg-emerald-50',
-                          active  && 'bg-[#29B5E8]/08',
-                          pending && 'opacity-40'
-                        )}
-                      >
-                        <div className="shrink-0 size-4 flex items-center justify-center">
-                          {done   && <CheckCircle2 className="size-4 text-emerald-500" />}
-                          {active && <Loader2 className="size-4 text-[#29B5E8] animate-spin" />}
-                          {pending && <div className="size-2 rounded-full bg-zinc-300" />}
-                        </div>
-                        <span className={cn(done && 'text-emerald-700', active && 'text-[#29B5E8] font-medium', pending && 'text-muted-foreground')}>
-                          {check}
-                        </span>
-                      </div>
-                    )
-                  })}
-
-                  {testChecks === 'done' && (
-                    <div className="mt-3 flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
-                      <CheckCircle2 className="size-4 text-emerald-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-emerald-700">Connection verified</p>
-                        <p className="text-[11px] text-emerald-600 mt-0.5">
-                          Sample query returned 5 rows. Your warehouse is reachable and the column mapping looks correct.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {testChecks === 'failed' && (
-                    <div className="mt-3 flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">
-                      <XCircle className="size-4 text-rose-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-rose-700">Connection failed</p>
-                        <p className="text-[11px] text-rose-600 mt-0.5">{testError}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Step 4: Success ── */}
+          {/* ── Success ── */}
           {step === 'success' && (
             <div className="flex flex-col items-center gap-5 py-8 text-center">
               <div className="size-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center">
@@ -548,13 +477,14 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
               <div>
                 <p className="text-sm font-semibold">Snowflake connected</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                  Your warehouse is live. ClueZero will sync {creds.database}.{creds.schema}.{mapping.table} on the next scheduled run.
+                  Your warehouse is live. ClueZero will sync {creds.database}.{creds.schema}.{creds.table} on the next scheduled run.
                 </p>
               </div>
               <div className="w-full bg-zinc-50 border border-border rounded-lg p-4 text-left flex flex-col gap-2">
                 <SummaryRow label="Account" value={creds.account} />
-                <SummaryRow label="Table" value={`${creds.database}.${creds.schema}.${mapping.table}`} />
-                <SummaryRow label="Next sync" value="Today at next scheduled run" />
+                <SummaryRow label="Table" value={`${creds.database}.${creds.schema}.${creds.table}`} />
+                <SummaryRow label="Brand column" value={mapping.brandCol} />
+                <SummaryRow label="Date column" value={mapping.dateCol} />
               </div>
             </div>
           )}
@@ -567,13 +497,10 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
               variant="ghost"
               size="sm"
               className="text-xs h-8"
+              disabled={detecting || saving}
               onClick={() => {
                 if (step === 'credentials') handleOpenChange(false)
-                else {
-                  const prev = STEP_ORDER[STEP_ORDER.indexOf(step) - 1]
-                  setStep(prev)
-                  if (step === 'test') { setTestChecks('idle'); setCompletedChecks(0) }
-                }
+                else setStep('credentials')
               }}
             >
               {step === 'credentials' ? 'Cancel' : 'Back'}
@@ -584,58 +511,29 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             <Button
               size="sm"
               className="text-xs h-8 ml-auto bg-[#29B5E8] hover:bg-[#1ea3d5] text-white"
-              disabled={!credsValid}
-              onClick={() => setStep('mapping')}
+              disabled={!credsValid || detecting}
+              onClick={detectColumns}
             >
-              Continue <ChevronRight className="size-3 ml-1" />
+              {detecting ? (
+                <><Loader2 className="size-3 mr-1.5 animate-spin" />Connecting…</>
+              ) : (
+                <>Detect columns <ChevronRight className="size-3 ml-1" /></>
+              )}
             </Button>
           )}
 
           {step === 'mapping' && (
             <Button
               size="sm"
-              className="text-xs h-8 ml-auto bg-[#29B5E8] hover:bg-[#1ea3d5] text-white"
-              disabled={!mappingValid}
-              onClick={() => setStep('test')}
-            >
-              Continue <ChevronRight className="size-3 ml-1" />
-            </Button>
-          )}
-
-          {step === 'test' && testChecks === 'idle' && (
-            <Button
-              size="sm"
-              className="text-xs h-8 ml-auto bg-[#29B5E8] hover:bg-[#1ea3d5] text-white"
-              onClick={runTest}
-            >
-              Test connection
-            </Button>
-          )}
-
-          {step === 'test' && testChecks === 'running' && (
-            <Button size="sm" disabled className="text-xs h-8 ml-auto">
-              <Loader2 className="size-3 mr-1.5 animate-spin" /> Testing…
-            </Button>
-          )}
-
-          {step === 'test' && testChecks === 'done' && (
-            <Button
-              size="sm"
               className="text-xs h-8 ml-auto bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setStep('success')}
+              disabled={!mappingValid || saving}
+              onClick={saveConnection}
             >
-              Save connection <ChevronRight className="size-3 ml-1" />
-            </Button>
-          )}
-
-          {step === 'test' && testChecks === 'failed' && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-8 ml-auto"
-              onClick={() => { setTestChecks('idle'); setCompletedChecks(0) }}
-            >
-              Retry
+              {saving ? (
+                <><Loader2 className="size-3 mr-1.5 animate-spin" />Saving…</>
+              ) : (
+                <>Save connection <ChevronRight className="size-3 ml-1" /></>
+              )}
             </Button>
           )}
 
@@ -643,7 +541,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             <Button
               size="sm"
               className="text-xs h-8 w-full bg-[#29B5E8] hover:bg-[#1ea3d5] text-white"
-              onClick={handleFinish}
+              onClick={() => handleOpenChange(false)}
             >
               Done
             </Button>
