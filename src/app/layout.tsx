@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Competitive Intel",
+  title: "ClueZero",
   description: "Track and benchmark competitor ad activity across platforms",
 };
 

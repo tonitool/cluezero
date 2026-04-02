@@ -1,0 +1,182 @@
+'use client'
+
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts'
+import { KpiCard } from '@/components/dashboard/_components/kpi-card'
+import { ChartCard } from '@/components/dashboard/_components/chart-card'
+import { SectionHeader } from '@/components/dashboard/_components/section-header'
+import { FUNNEL_COLORS } from '@/components/dashboard/_components/constants'
+import {
+  funnelDistribution,
+  funnelByAdvertiser,
+  newAdsByFunnel,
+  creativeScorecards,
+  topCreatives,
+} from '@/components/dashboard/mock-data'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+
+const PLATFORM_BADGE_COLORS: Record<string, string> = {
+  Meta: '#1877F2',
+  Google: '#34A853',
+  LinkedIn: '#0A66C2',
+}
+
+function piColor(pi: number): string {
+  if (pi > 70) return '#16a34a'
+  if (pi > 50) return '#d97706'
+  return '#dc2626'
+}
+
+function SubSection({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 my-6">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+export function PerformanceView() {
+  return (
+    <div>
+      <SectionHeader
+        title="Campaign Performance"
+        description="Funnel stage investment and top performing creative benchmarks"
+      />
+
+      {/* ── Funnel Benchmark ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <ChartCard title="Funnel Stage Distribution" height={280}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={funnelDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 52 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="stage" tick={{ fontSize: 11 }} width={48} />
+              <Tooltip />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                {funnelDistribution.map((entry) => (
+                  <Cell key={`cell-${entry.stage}`} fill={FUNNEL_COLORS[entry.stage as keyof typeof FUNNEL_COLORS]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Funnel Mix by Advertiser" height={280}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={funnelByAdvertiser} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 64 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} width={60} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="see" name="See" stackId="a" fill={FUNNEL_COLORS.See} />
+              <Bar dataKey="think" name="Think" stackId="a" fill={FUNNEL_COLORS.Think} />
+              <Bar dataKey="doo" name="Do" stackId="a" fill={FUNNEL_COLORS.Do} />
+              <Bar dataKey="care" name="Care" stackId="a" fill={FUNNEL_COLORS.Care} radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      <ChartCard title="New Ads by Funnel Stage Over Time" height={260} className="mt-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={newAdsByFunnel} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Line type="monotone" dataKey="see" name="See" stroke={FUNNEL_COLORS.See} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="think" name="Think" stroke={FUNNEL_COLORS.Think} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="doo" name="Do" stroke={FUNNEL_COLORS.Do} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="care" name="Care" stroke={FUNNEL_COLORS.Care} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {/* ── Creative Benchmark ── */}
+      <SubSection label="Creative Benchmark" />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {creativeScorecards.map((card) => (
+          <KpiCard key={card.label} label={card.label} value={card.value} delta={card.delta} direction="up" />
+        ))}
+      </div>
+
+      <p className="text-sm font-semibold mb-4">Top 10 New Creatives This Week</p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
+        {topCreatives.map((creative) => {
+          const platformColor = PLATFORM_BADGE_COLORS[creative.platform] ?? '#888'
+          const sentimentPct = ((creative.sentiment + 1) / 2) * 100
+          const brandInitial = creative.brand.charAt(0).toUpperCase()
+
+          return (
+            <div
+              key={creative.id}
+              className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+            >
+              <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+                {creative.thumbnail ? (
+                  <img
+                    src={creative.thumbnail}
+                    alt={creative.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                      const parent = e.currentTarget.parentElement
+                      if (parent) {
+                        parent.innerHTML = `<span class="text-2xl font-bold text-muted-foreground select-none">${brandInitial}</span>`
+                      }
+                    }}
+                  />
+                ) : (
+                  <span className="text-2xl font-bold text-muted-foreground select-none">{brandInitial}</span>
+                )}
+              </div>
+              <div className="p-3">
+                <div className="flex items-center justify-between gap-1">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 border font-medium"
+                    style={{ borderColor: platformColor, color: platformColor }}
+                  >
+                    {creative.platform}
+                  </Badge>
+                  <span className="text-sm font-bold tabular-nums" style={{ color: piColor(creative.performanceIndex) }}>
+                    {creative.performanceIndex}
+                  </span>
+                </div>
+                <p className="line-clamp-2 text-xs font-medium mt-1 leading-snug">{creative.title}</p>
+                <div className="flex items-center justify-between mt-1.5 gap-1">
+                  <span className="text-[10px] text-muted-foreground truncate">{creative.brand}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{creative.funnelStage}</span>
+                </div>
+                <div className="mt-2">
+                  <p className="text-[10px] text-muted-foreground">Sentiment</p>
+                  <Progress value={sentimentPct} className="h-1.5 mt-0.5" />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

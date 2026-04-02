@@ -443,3 +443,178 @@ export const topCreatives: Creative[] = [
     thumbnail: "./placeholder.svg",
   },
 ]
+
+// ─── Creative Library (expanded set) ────────────────────────────────────────
+
+export const creativeLibrary: Creative[] = [
+  ...topCreatives,
+  { id: "11", brand: "Aral",     title: "Summer Road Trip Fueling Deal",      platform: "Meta",     performanceIndex: 73, sentiment: 0.55, funnelStage: "See",   thumbnail: "./placeholder.svg" },
+  { id: "12", brand: "Shell",    title: "Motorway Stop — Fresh & Fast",        platform: "Meta",     performanceIndex: 71, sentiment: 0.42, funnelStage: "See",   thumbnail: "./placeholder.svg" },
+  { id: "13", brand: "ORLEN",    title: "ORLEN App — Track Every Fill-Up",     platform: "Google",   performanceIndex: 70, sentiment: 0.38, funnelStage: "Think", thumbnail: "./placeholder.svg" },
+  { id: "14", brand: "Circle K", title: "Coffee & Go — Your Morning Ritual",   platform: "Meta",     performanceIndex: 68, sentiment: 0.77, funnelStage: "Care",  thumbnail: "./placeholder.svg" },
+  { id: "15", brand: "ENI",      title: "Eni Card Business — Save More Daily", platform: "LinkedIn", performanceIndex: 67, sentiment: 0.22, funnelStage: "Do",    thumbnail: "./placeholder.svg" },
+  { id: "16", brand: "Esso",     title: "Synergy Fuel — Better Performance",   platform: "Google",   performanceIndex: 65, sentiment: 0.31, funnelStage: "Think", thumbnail: "./placeholder.svg" },
+  { id: "17", brand: "ORLEN",    title: "Fleet Card — Reduce Cost Per Km",     platform: "LinkedIn", performanceIndex: 63, sentiment: 0.14, funnelStage: "Do",    thumbnail: "./placeholder.svg" },
+  { id: "18", brand: "Aral",     title: "Family Offers at Every Stop",         platform: "Meta",     performanceIndex: 61, sentiment: 0.68, funnelStage: "Care",  thumbnail: "./placeholder.svg" },
+  { id: "19", brand: "Shell",    title: "Shell V-Power — Feel the Difference", platform: "Google",   performanceIndex: 59, sentiment: 0.44, funnelStage: "Think", thumbnail: "./placeholder.svg" },
+  { id: "20", brand: "Circle K", title: "Easy Fueling — No App Needed",        platform: "Meta",     performanceIndex: 57, sentiment: 0.52, funnelStage: "Do",    thumbnail: "./placeholder.svg" },
+  { id: "21", brand: "ENI",      title: "Smart Charging Network Expands",      platform: "LinkedIn", performanceIndex: 55, sentiment: 0.09, funnelStage: "See",   thumbnail: "./placeholder.svg" },
+  { id: "22", brand: "ORLEN",    title: "New Station Near You — Find It Now",  platform: "Google",   performanceIndex: 53, sentiment: 0.33, funnelStage: "Do",    thumbnail: "./placeholder.svg" },
+  { id: "23", brand: "Esso",     title: "Esso Extra — Every Litre Counts",     platform: "Meta",     performanceIndex: 51, sentiment: 0.27, funnelStage: "Care",  thumbnail: "./placeholder.svg" },
+  { id: "24", brand: "Aral",     title: "Aral Supercard — Points Add Up",      platform: "Meta",     performanceIndex: 48, sentiment: 0.61, funnelStage: "Care",  thumbnail: "./placeholder.svg" },
+  { id: "25", brand: "Shell",    title: "Go Further With Shell ClubSmart",     platform: "LinkedIn", performanceIndex: 45, sentiment: 0.17, funnelStage: "Think", thumbnail: "./placeholder.svg" },
+]
+
+// ─── Connections ──────────────────────────────────────────────────────────────
+
+export type Connection = {
+  id: string
+  name: string
+  platform: string
+  status: "connected" | "disconnected" | "error" | "pending"
+  lastSync: string | null
+  recordCount: number | null
+  description: string
+  authType: "oauth" | "api_key" | "manual" | "credentials"
+}
+
+export const connections: Connection[] = [
+  {
+    id: "meta",
+    name: "Meta Ad Library",
+    platform: "Meta",
+    status: "connected",
+    lastSync: "2026-04-01T08:14:00Z",
+    recordCount: 1842,
+    description: "Pulls public ad creatives and estimated spend from Meta Ad Library API.",
+    authType: "api_key",
+  },
+  {
+    id: "google",
+    name: "Google Ads Transparency",
+    platform: "Google",
+    status: "error",
+    lastSync: "2026-03-29T14:22:00Z",
+    recordCount: 934,
+    description: "Scrapes Google Ads Transparency Center for competitor display and search ads.",
+    authType: "api_key",
+  },
+  {
+    id: "linkedin",
+    name: "LinkedIn Ad Library",
+    platform: "LinkedIn",
+    status: "disconnected",
+    lastSync: null,
+    recordCount: null,
+    description: "Connects to LinkedIn Ad Library to track B2B competitor campaigns.",
+    authType: "oauth",
+  },
+  {
+    id: "csv",
+    name: "CSV / Manual Upload",
+    platform: "Manual",
+    status: "connected",
+    lastSync: "2026-04-01T07:00:00Z",
+    recordCount: 210,
+    description: "Import ad data manually via structured CSV files. Useful for offline or proprietary sources.",
+    authType: "manual",
+  },
+  {
+    id: "snowflake",
+    name: "Snowflake",
+    platform: "Snowflake",
+    status: "disconnected",
+    lastSync: null,
+    recordCount: null,
+    description: "Query your Snowflake data warehouse directly. Map tables to competitive intelligence fields for automated ingestion.",
+    authType: "credentials",
+  },
+]
+
+// ─── Alert Rules ──────────────────────────────────────────────────────────────
+
+export type AlertRule = {
+  id: string
+  name: string
+  condition: string
+  channel: "email" | "in-app" | "both"
+  frequency: "instant" | "daily" | "weekly"
+  enabled: boolean
+  lastTriggered: string | null
+  triggerCount: number
+}
+
+export const alertRules: AlertRule[] = [
+  {
+    id: "a1",
+    name: "Competitor Spend Spike",
+    condition: "Any competitor increases weekly est. spend by > 30%",
+    channel: "both",
+    frequency: "instant",
+    enabled: true,
+    lastTriggered: "2026-03-28T09:00:00Z",
+    triggerCount: 3,
+  },
+  {
+    id: "a2",
+    name: "ORLEN Share Drop",
+    condition: "ORLEN share of weekly est. spend falls below 10%",
+    channel: "email",
+    frequency: "daily",
+    enabled: true,
+    lastTriggered: null,
+    triggerCount: 0,
+  },
+  {
+    id: "a3",
+    name: "New Ad Burst",
+    condition: "Any brand launches > 5 new ads in a single day",
+    channel: "in-app",
+    frequency: "instant",
+    enabled: true,
+    lastTriggered: "2026-04-01T06:44:00Z",
+    triggerCount: 7,
+  },
+  {
+    id: "a4",
+    name: "Platform Shift Detected",
+    condition: "Competitor shifts > 20 pts of budget between platforms week-over-week",
+    channel: "both",
+    frequency: "weekly",
+    enabled: false,
+    lastTriggered: "2026-03-10T00:00:00Z",
+    triggerCount: 1,
+  },
+  {
+    id: "a5",
+    name: "High-PI Creative Alert",
+    condition: "New creative from any brand scores PI > 85",
+    channel: "both",
+    frequency: "instant",
+    enabled: true,
+    lastTriggered: "2026-03-31T14:20:00Z",
+    triggerCount: 2,
+  },
+]
+
+// ─── Setup: Tracked Brands ────────────────────────────────────────────────────
+
+export type TrackedBrand = {
+  id: string
+  name: string
+  color: string
+  platforms: ("Meta" | "Google" | "LinkedIn")[]
+  active: boolean
+  adsTracked: number
+  lastSeen: string
+}
+
+export const trackedBrands: TrackedBrand[] = [
+  { id: "orlen",   name: "ORLEN",    color: "#E4002B", platforms: ["Meta", "Google", "LinkedIn"], active: true,  adsTracked: 312, lastSeen: "2026-04-01" },
+  { id: "aral",    name: "Aral",     color: "#0066B2", platforms: ["Meta", "Google"],             active: true,  adsTracked: 284, lastSeen: "2026-04-01" },
+  { id: "circlek", name: "Circle K", color: "#EC6B1E", platforms: ["Meta", "Google"],             active: true,  adsTracked: 198, lastSeen: "2026-03-31" },
+  { id: "eni",     name: "ENI",      color: "#5C5C5C", platforms: ["Meta", "LinkedIn"],           active: true,  adsTracked: 143, lastSeen: "2026-03-30" },
+  { id: "esso",    name: "Esso",     color: "#003087", platforms: ["Meta", "Google"],             active: true,  adsTracked: 167, lastSeen: "2026-04-01" },
+  { id: "shell",   name: "Shell",    color: "#B8860B", platforms: ["Meta", "Google", "LinkedIn"], active: true,  adsTracked: 221, lastSeen: "2026-04-01" },
+  { id: "total",   name: "TotalEnergies", color: "#EF0000", platforms: ["Meta"],                 active: false, adsTracked: 0,   lastSeen: "—" },
+]
