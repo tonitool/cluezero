@@ -86,7 +86,7 @@ export function OverviewView({ workspaceId }: Props) {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {executiveMetrics.map((metric: { label: string; value: string; delta: string; direction: string }) => (
+        {executiveMetrics.map((metric: { label: string; value: string; delta: string; direction: 'up' | 'down' }) => (
           <KpiCard key={metric.label} label={metric.label} value={metric.value} delta={metric.delta} direction={metric.direction} />
         ))}
       </div>
@@ -134,7 +134,7 @@ export function OverviewView({ workspaceId }: Props) {
       <SubSection label="Weekly Movement" />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {weeklyMovementMetrics.map((metric: { label: string; value: string; subtitle?: string; delta: string; direction: string }) => (
+        {weeklyMovementMetrics.map((metric: { label: string; value: string; subtitle?: string; delta: string; direction: 'up' | 'down' }) => (
           <KpiCard key={metric.label} label={metric.label} value={metric.value} subtitle={metric.subtitle} delta={metric.delta} direction={metric.direction} />
         ))}
       </div>
