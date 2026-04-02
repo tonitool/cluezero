@@ -166,7 +166,7 @@ function PI_COLOR(pi: number) {
   return pi > 70 ? '#16a34a' : pi > 50 ? '#d97706' : '#dc2626'
 }
 
-function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidget; onNavigate: (v: ViewId) => void; spendData: typeof weeklySpendMovement }) {
+function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidget; onNavigate: (v: ViewId) => void; spendData: Record<string, unknown>[] }) {
   if (widget.type === 'spend-chart') {
     return (
       <div className="bg-white rounded-lg border border-border shadow-sm p-5">
