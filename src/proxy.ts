@@ -39,8 +39,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Authenticated user hitting root or auth pages → send to dashboard
-  if (user && (pathname === '/' || pathname === '/login' || pathname === '/signup')) {
+  // Authenticated user hitting root or login → send to dashboard
+  // Allow /signup through so users without a workspace can create one
+  if (user && (pathname === '/' || pathname === '/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
