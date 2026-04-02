@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
     const rawDate = r.date
     let isoDate: string
     if ((rawDate as unknown) instanceof Date) {
-      isoDate = rawDate.toISOString().slice(0, 10)
+      isoDate = (rawDate as unknown as Date).toISOString().slice(0, 10)
     } else {
       const d = new Date(String(rawDate))
       isoDate = isNaN(d.getTime()) ? String(rawDate) : d.toISOString().slice(0, 10)
