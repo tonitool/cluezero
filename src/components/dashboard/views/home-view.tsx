@@ -468,7 +468,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
 
       {/* ── KPI strip ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {kpiMetrics.map((m: typeof executiveMetrics[0]) => (
+        {kpiMetrics.map((m: { label: string; value: string; delta: string; direction: string }) => (
           <KpiCard key={m.label} label={m.label} value={m.value} delta={m.delta} direction={m.direction} />
         ))}
       </div>
