@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Brain,
   LogOut,
+  CircleUser,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -60,13 +61,14 @@ import { AlertsView }          from './views/alerts-view'
 import { ConnectionsView }     from './views/connections-view'
 import { SetupView }           from './views/setup-view'
 import { StrategyView }        from './views/strategy-view'
+import { AccountView }         from './views/account-view'
 
 type ViewId =
   | 'home'
   | 'overview' | 'competitive' | 'performance' | 'orlen'
   | 'ai' | 'creative-library' | 'strategy'
   | 'alerts'
-  | 'connections' | 'setup'
+  | 'connections' | 'setup' | 'account'
 
 const NAV_GROUPS = [
   {
@@ -103,6 +105,7 @@ const NAV_GROUPS = [
     items: [
       { id: 'connections'      as ViewId, label: 'Connections',              icon: Plug },
       { id: 'setup'            as ViewId, label: 'Setup',                    icon: Settings2 },
+      { id: 'account'          as ViewId, label: 'Account',                  icon: CircleUser },
     ],
   },
 ]
@@ -116,7 +119,7 @@ const weeks = [
 ]
 
 // Views that don't need the week selector
-const WORKSPACE_VIEWS: ViewId[] = ['home', 'connections', 'setup', 'alerts']
+const WORKSPACE_VIEWS: ViewId[] = ['home', 'connections', 'setup', 'alerts', 'account']
 
 interface Props {
   workspaceId: string
@@ -187,13 +190,20 @@ export function CompetitiveIntelDashboard({ workspaceName }: Props) {
 
         <SidebarFooter className="p-3 group-data-[collapsible=icon]:p-2">
           <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
-            <Avatar className="size-7 shrink-0">
-              <AvatarFallback className="bg-zinc-600 text-white text-[10px] font-semibold">
-                {workspaceName.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <button onClick={() => setView('account')} className="shrink-0" title="Account settings">
+              <Avatar className="size-7">
+                <AvatarFallback className="bg-zinc-600 text-white text-[10px] font-semibold">
+                  {workspaceName.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </button>
             <div className="flex flex-col min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <span className="text-xs font-medium text-sidebar-foreground truncate">{workspaceName}</span>
+              <button
+                onClick={() => setView('account')}
+                className="text-xs font-medium text-sidebar-foreground truncate text-left hover:underline"
+              >
+                {workspaceName}
+              </button>
               <span className="text-[10px] text-sidebar-foreground/50">Admin</span>
             </div>
             <button
@@ -254,6 +264,7 @@ export function CompetitiveIntelDashboard({ workspaceName }: Props) {
           {view === 'alerts'           && <AlertsView />}
           {view === 'connections'      && <ConnectionsView />}
           {view === 'setup'            && <SetupView />}
+          {view === 'account'          && <AccountView />}
         </main>
       </SidebarInset>
     </SidebarProvider>

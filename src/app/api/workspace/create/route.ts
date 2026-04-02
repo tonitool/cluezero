@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 // Called after successful auth.signUp() to create the first workspace.
-// Runs server-side so the session cookie is available and RLS passes.
+// Uses service role client to bypass RLS for trusted server-side inserts.
 export async function POST(req: NextRequest) {
   const { name, slug } = await req.json() as { name: string; slug: string }
 
@@ -10,6 +11,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'name and slug required' }, { status: 400 })
   }
 
+  // Verify the caller is authenticated (uses session cookie)
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
 
@@ -17,8 +19,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
+  // Use service role client to bypass RLS for workspace creation
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   // Check if slug is already taken
-  const { data: existing } = await supabase
+  const { data: existing } = await admin
     .from('workspaces')
     .select('id')
     .eq('slug', slug)
@@ -28,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Workspace URL is already taken' }, { status: 409 })
   }
 
-  const { data: workspace, error: wsError } = await supabase
+  const { data: workspace, error: wsError } = await admin
     .from('workspaces')
     .insert({ name, slug })
     .select()
@@ -38,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: wsError.message }, { status: 500 })
   }
 
-  const { error: memberError } = await supabase
+  const { error: memberError } = await admin
     .from('workspace_members')
     .insert({ workspace_id: workspace.id, user_id: user.id, role: 'owner' })
 

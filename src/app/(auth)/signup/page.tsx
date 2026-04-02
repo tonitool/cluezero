@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { CheckCircle2, Eye, EyeOff, Loader2, Building2 } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, Loader2, Building2, AlertCircle, Mail } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ClueZeroMark, ClueZeroWordmark } from '@/components/brand/logo'
 
@@ -19,7 +19,7 @@ export default function SignupPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [step, setStep] = useState(0) // 0 = account details, 1 = workspace name
+  const [step, setStep] = useState(0) // 0 = account, 1 = workspace, 2 = done, 3 = confirm email
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [workspaceName, setWorkspaceName] = useState('')
@@ -48,7 +48,11 @@ export default function SignupPage() {
     // Step 1: create auth user
     const { error: authError } = await supabase.auth.signUp({ email, password })
     if (authError) {
-      setError(authError.message)
+      if (authError.message.toLowerCase().includes('rate limit')) {
+        setError('Too many sign-up attempts. Please wait a few minutes and try again.')
+      } else {
+        setError(authError.message)
+      }
       setLoading(false)
       return
     }
@@ -56,7 +60,13 @@ export default function SignupPage() {
     // Step 2: sign in immediately so the session cookie is set
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
     if (signInError) {
-      setError('Account created — please sign in.')
+      // Email confirmation required — show dedicated check-email screen
+      if (signInError.message.toLowerCase().includes('confirm') || signInError.message.toLowerCase().includes('not confirmed')) {
+        setStep(3)
+        setLoading(false)
+        return
+      }
+      setError(signInError.message)
       setLoading(false)
       return
     }
@@ -182,6 +192,27 @@ export default function SignupPage() {
             </div>
           )}
 
+          {/* Step 3: Confirm email */}
+          {step === 3 && (
+            <div className="text-center py-8">
+              <div className="flex size-14 items-center justify-center rounded-full bg-zinc-800 border border-zinc-700 mx-auto mb-4">
+                <Mail className="size-7 text-zinc-300" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Check your email</h2>
+              <p className="text-zinc-400 text-sm mb-1">
+                We sent a confirmation link to
+              </p>
+              <p className="text-white text-sm font-medium mb-4">{email}</p>
+              <p className="text-zinc-500 text-xs">
+                Click the link to confirm your account, then{' '}
+                <Link href="/login" className="text-zinc-300 hover:text-white underline">
+                  sign in
+                </Link>
+                .
+              </p>
+            </div>
+          )}
+
           {/* Step 0: Account details */}
           {step === 0 && (
             <>
@@ -193,7 +224,7 @@ export default function SignupPage() {
               <form onSubmit={handleNext} className="space-y-5">
                 {error && (
                   <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2.5 rounded-lg">
-                    <CheckCircle2 className="size-4 shrink-0" />
+                    <AlertCircle className="size-4 shrink-0" />
                     {error}
                   </div>
                 )}
@@ -256,7 +287,7 @@ export default function SignupPage() {
               <form onSubmit={handleNext} className="space-y-5">
                 {error && (
                   <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2.5 rounded-lg">
-                    <CheckCircle2 className="size-4 shrink-0" />
+                    <AlertCircle className="size-4 shrink-0" />
                     {error}
                   </div>
                 )}
@@ -276,7 +307,7 @@ export default function SignupPage() {
                   </div>
                   {slug && (
                     <p className="text-zinc-600 text-xs mt-1">
-                      URL: <span className="text-zinc-400">competeiq.com/dashboard/<strong>{slug}</strong></span>
+                      URL: <span className="text-zinc-400">app.cluezero.io/dashboard/<strong>{slug}</strong></span>
                     </p>
                   )}
                 </div>
