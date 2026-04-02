@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, Check } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, Check, Loader2, AlertCircle } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -33,12 +36,55 @@ function SectionCard({ title, description, children }: { title: string; descript
   )
 }
 
-export function SetupView() {
+interface Props {
+  workspaceId: string
+  workspaceName: string
+  workspaceSlug: string
+}
+
+export function SetupView({ workspaceId, workspaceName, workspaceSlug }: Props) {
+  const router = useRouter()
   const [brands, setBrands] = useState(trackedBrands)
   const [refreshCadence, setRefreshCadence] = useState('daily')
   const [aiEnrichment, setAiEnrichment] = useState(true)
   const [spendModel, setSpendModel] = useState('cpm')
   const [saved, setSaved] = useState(false)
+
+  // Workspace details
+  const [wsName, setWsName] = useState(workspaceName)
+  const [wsSlug, setWsSlug] = useState(workspaceSlug)
+  const [savingWs, setSavingWs] = useState(false)
+  const [wsFeedback, setWsFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const derivedSlug = wsName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+
+  function handleNameChange(value: string) {
+    setWsName(value)
+    setWsSlug(value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''))
+  }
+
+  async function handleSaveWorkspace() {
+    setSavingWs(true)
+    setWsFeedback(null)
+    const res = await fetch('/api/workspace/update', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId, name: wsName, slug: wsSlug }),
+    })
+    const data = await res.json()
+    setSavingWs(false)
+    if (!res.ok) {
+      setWsFeedback({ type: 'error', message: data.error ?? 'Failed to save.' })
+    } else {
+      setWsFeedback({ type: 'success', message: 'Workspace updated.' })
+      if (data.slug !== workspaceSlug) {
+        router.push(`/dashboard/${data.slug}`)
+        router.refresh()
+      }
+    }
+  }
+
+  const wsChanged = wsName !== workspaceName || wsSlug !== workspaceSlug
 
   function toggleBrand(id: string) {
     setBrands(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b))
@@ -70,6 +116,62 @@ export function SetupView() {
           {saved ? <><Check className="size-3.5" /> Saved</> : 'Save Changes'}
         </Button>
       </SectionHeader>
+
+      {/* Workspace details */}
+      <div className="bg-white rounded-lg border border-border shadow-sm p-5 mb-4 max-w-lg">
+        <p className="text-sm font-semibold mb-0.5">Workspace Details</p>
+        <p className="text-xs text-muted-foreground mb-4">Change your workspace name or URL slug.</p>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ws-name" className="text-xs">Workspace name</Label>
+            <Input
+              id="ws-name"
+              value={wsName}
+              onChange={e => handleNameChange(e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ws-slug" className="text-xs">URL slug</Label>
+            <Input
+              id="ws-slug"
+              value={wsSlug}
+              onChange={e => setWsSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              className="h-8 text-sm font-mono"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              app.cluezero.io/dashboard/<strong>{wsSlug || derivedSlug}</strong>
+            </p>
+          </div>
+
+          {wsFeedback && (
+            <div className={cn(
+              'flex items-center gap-2 text-xs px-3 py-2 rounded-md border',
+              wsFeedback.type === 'success'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-rose-50 text-rose-600 border-rose-200'
+            )}>
+              {wsFeedback.type === 'success'
+                ? <Check className="size-3.5 shrink-0" />
+                : <AlertCircle className="size-3.5 shrink-0" />}
+              {wsFeedback.message}
+            </div>
+          )}
+
+          <div>
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              disabled={savingWs || !wsChanged || !wsName.trim() || !wsSlug.trim()}
+              onClick={handleSaveWorkspace}
+            >
+              {savingWs && <Loader2 className="size-3 mr-1.5 animate-spin" />}
+              Save workspace
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Tracked brands - takes 2 cols */}

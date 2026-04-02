@@ -127,7 +127,7 @@ interface Props {
   workspaceSlug: string
 }
 
-export function CompetitiveIntelDashboard({ workspaceName }: Props) {
+export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspaceSlug }: Props) {
   const [view, setView] = useState<ViewId>('home')
   const [week, setWeek] = useState('w14')
   const router = useRouter()
@@ -263,7 +263,7 @@ export function CompetitiveIntelDashboard({ workspaceName }: Props) {
           {view === 'strategy'         && <StrategyView />}
           {view === 'alerts'           && <AlertsView />}
           {view === 'connections'      && <ConnectionsView />}
-          {view === 'setup'            && <SetupView />}
+          {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} />}
           {view === 'account'          && <AccountView />}
         </main>
       </SidebarInset>
