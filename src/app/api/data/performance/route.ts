@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
   const doStageCount = { total: 0, do: 0 }
 
   for (const ad of rows) {
-    const rawName = (ad.tracked_brands as { name: string } | null)?.name ?? 'Unknown'
+    const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
     const bKey = brandKey(rawName)
     brandNames[bKey] = rawName
 

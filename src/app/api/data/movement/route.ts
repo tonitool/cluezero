@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   const allWeeks = new Set<string>()
 
   for (const ad of rows) {
-    const brand = (ad.tracked_brands as { name: string } | null)?.name ?? 'Unknown'
+    const brand = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
     const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []
 
     if (estimates.length === 0) {

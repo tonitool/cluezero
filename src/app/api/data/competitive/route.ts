@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
   const allWeeks = new Set<string>()
 
   for (const ad of rows) {
-    const rawName = (ad.tracked_brands as { name: string } | null)?.name ?? 'Unknown'
+    const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
     const bKey = brandKey(rawName)
     brandNames[bKey] = rawName
 

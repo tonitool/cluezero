@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   const brandNames: Record<string, string> = {}
 
   for (const ad of rows) {
-    const rawName = (ad.tracked_brands as { name: string } | null)?.name ?? 'Unknown'
+    const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
     const key = brandKey(rawName)
     brandNames[key] = rawName
     const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []
