@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
   const affectedWeeks = [...new Set(
     rows.map(r => {
       const raw = mapRow(r, mapping).date
-      const d = raw instanceof Date ? raw : new Date(String(raw))
+      const d = (raw as unknown) instanceof Date ? (raw as unknown as Date) : new Date(String(raw))
       return getWeekStart(isNaN(d.getTime()) ? String(raw) : d.toISOString().slice(0, 10))
     })
   )]
