@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
     // Normalise date — Snowflake DATE columns come back as JS Date objects
     const rawDate = r.date
     let isoDate: string
-    if (rawDate instanceof Date) {
+    if ((rawDate as unknown) instanceof Date) {
       isoDate = rawDate.toISOString().slice(0, 10)
     } else {
       const d = new Date(String(rawDate))
