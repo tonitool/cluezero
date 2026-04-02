@@ -30,8 +30,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import {
-  executiveMetrics,
-  weeklySpendMovement,
   performanceIndexRanking,
   creativeLibrary,
 } from '@/components/dashboard/mock-data'
@@ -346,8 +344,8 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
     </div>
   )
 
-  const kpiMetrics = liveData?.executiveMetrics ?? executiveMetrics
-  const spendChartData = liveData?.weeklySpendMovement ?? weeklySpendMovement
+  const kpiMetrics = liveData?.executiveMetrics ?? []
+  const spendChartData = liveData?.weeklySpendMovement ?? []
   const brandLabel = ownBrand || 'ORLEN'
 
   function handleSubmit(q: string) {

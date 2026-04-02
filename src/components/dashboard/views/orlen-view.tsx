@@ -8,12 +8,6 @@ import {
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
-import {
-  orlenVsMarketScorecards as mockScorecards,
-  competitorStrategyProfiles,
-  marketActivityVsPresence as mockActivityVsPresence,
-  topOpportunities,
-} from '@/components/dashboard/mock-data'
 import { Badge } from '@/components/ui/badge'
 
 const STRATEGY_COLORS = {
@@ -90,8 +84,8 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN' }: Props) {
     </div>
   )
 
-  const orlenVsMarketScorecards  = data?.orlenVsMarketScorecards  ?? mockScorecards
-  const marketActivityVsPresence = data?.marketActivityVsPresence ?? mockActivityVsPresence
+  const orlenVsMarketScorecards  = data?.orlenVsMarketScorecards  ?? []
+  const marketActivityVsPresence = data?.marketActivityVsPresence ?? []
 
   return (
     <div>
@@ -137,25 +131,16 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN' }: Props) {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-2">
         <ChartCard title="Competitor Strategy Profiles" height={300}>
-          <div style={{ width: '100%', height: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={competitorStrategyProfiles} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="advertiser" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis domain={[0, 10]} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <Tooltip />
-                <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="awareness" name="Awareness" fill={STRATEGY_COLORS.awareness} />
-                <Bar dataKey="conversion" name="Conversion" fill={STRATEGY_COLORS.conversion} />
-                <Bar dataKey="innovation" name="Innovation" fill={STRATEGY_COLORS.innovation} />
-                <Bar dataKey="localTargeting" name="Local Targeting" fill={STRATEGY_COLORS.localTargeting} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+            Strategy profile data is not available in the current data source.
           </div>
         </ChartCard>
 
         <ChartCard title="Market Activity vs Presence" height={300}>
           <div style={{ width: '100%', height: '100%' }}>
+            {marketActivityVsPresence.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No data available.</div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -180,45 +165,24 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN' }: Props) {
                 <Scatter data={marketActivityVsPresence} shape={(props: ScatterDotProps) => <ScatterDot {...props} />} />
               </ScatterChart>
             </ResponsiveContainer>
+            )}
           </div>
-          <div className="flex flex-wrap gap-3 mt-2 px-1">
-            {marketActivityVsPresence.map((item: { advertiser: string }) => (
-              <div key={item.advertiser} className="flex items-center gap-1.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_COLORS[brandColorKey(item.advertiser)] }} />
-                <span className="text-[11px] text-muted-foreground">{item.advertiser}</span>
-              </div>
-            ))}
-          </div>
+          {marketActivityVsPresence.length > 0 && (
+            <div className="flex flex-wrap gap-3 mt-2 px-1">
+              {marketActivityVsPresence.map((item: { advertiser: string }) => (
+                <div key={item.advertiser} className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_COLORS[brandColorKey(item.advertiser)] }} />
+                  <span className="text-[11px] text-muted-foreground">{item.advertiser}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </ChartCard>
       </div>
 
-      <div className="mt-4 bg-white rounded-lg border border-border shadow-sm">
-        <p className="font-semibold text-sm px-5 pt-5 pb-3">Top Opportunities</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-t border-border bg-muted/40">
-                <th className="text-left text-xs font-medium text-muted-foreground px-5 py-2.5">Topic</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2.5">Whitespace</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2.5">Opportunity</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2.5">Competitor Density</th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2.5">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topOpportunities.map((row, i) => (
-                <tr key={row.topic} className={i % 2 === 0 ? 'bg-white' : 'bg-muted/20'}>
-                  <td className="px-5 py-2.5 text-sm font-medium">{row.topic}</td>
-                  <td className="px-3 py-2.5"><WhitespaceBadge level={row.whitespace} /></td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[260px]">{row.reason}</td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{row.whitespace === 'High' ? 'Low' : row.whitespace === 'Medium' ? 'Medium' : 'High'}</td>
-                  <td className="px-3 py-2.5"><ScoreDotsWhitespace score={row.score} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="h-2" />
+      <div className="mt-4 bg-white rounded-lg border border-border shadow-sm p-5">
+        <p className="font-semibold text-sm mb-2">Top Opportunities</p>
+        <p className="text-xs text-muted-foreground">Opportunity analysis is not available in the current data source.</p>
       </div>
     </div>
   )
