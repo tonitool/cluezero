@@ -1,28 +1,20 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import {
-  Bar,
-  BarChart,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Cell,
+  Bar, BarChart, Line, LineChart,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
 } from 'recharts'
 import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { FUNNEL_COLORS } from '@/components/dashboard/_components/constants'
 import {
-  funnelDistribution,
-  funnelByAdvertiser,
-  newAdsByFunnel,
-  creativeScorecards,
-  topCreatives,
+  funnelDistribution as mockFunnelDist,
+  funnelByAdvertiser as mockFunnelByAdv,
+  newAdsByFunnel as mockNewAdsByFunnel,
+  creativeScorecards as mockScorecards,
+  topCreatives as mockTopCreatives,
 } from '@/components/dashboard/mock-data'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -43,15 +35,46 @@ function SubSection({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 my-6">
       <div className="h-px flex-1 bg-border" />
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">
-        {label}
-      </span>
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">{label}</span>
       <div className="h-px flex-1 bg-border" />
     </div>
   )
 }
 
-export function PerformanceView() {
+interface Props { workspaceId?: string }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PerfData = Record<string, any>
+
+export function PerformanceView({ workspaceId }: Props) {
+  const [data, setData] = useState<PerfData | null>(null)
+  const [loading, setLoading] = useState(!!workspaceId)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    setLoading(true)
+    fetch(`/api/data/performance?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => { if (d.hasData) setData(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [workspaceId])
+
+  if (loading) return (
+    <div>
+      <SectionHeader title="Campaign Performance" description="Funnel stage investment and top performing creative benchmarks" />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {[1,2].map(i => <div key={i} className="h-72 bg-zinc-100 rounded-lg animate-pulse" />)}
+      </div>
+    </div>
+  )
+
+  const funnelDistribution  = data?.funnelDistribution  ?? mockFunnelDist
+  const funnelByAdvertiser  = data?.funnelByAdvertiser  ?? mockFunnelByAdv
+  const newAdsByFunnel      = data?.newAdsByFunnel      ?? mockNewAdsByFunnel
+  const creativeScorecards  = data?.creativeScorecards  ?? mockScorecards
+  const topCreatives        = data?.topCreatives        ?? mockTopCreatives
+
   return (
     <div>
       <SectionHeader
@@ -59,7 +82,6 @@ export function PerformanceView() {
         description="Funnel stage investment and top performing creative benchmarks"
       />
 
-      {/* ── Funnel Benchmark ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ChartCard title="Funnel Stage Distribution" height={280}>
           <ResponsiveContainer width="100%" height="100%">
@@ -69,8 +91,8 @@ export function PerformanceView() {
               <YAxis type="category" dataKey="stage" tick={{ fontSize: 11 }} width={48} />
               <Tooltip />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                {funnelDistribution.map((entry) => (
-                  <Cell key={`cell-${entry.stage}`} fill={FUNNEL_COLORS[entry.stage as keyof typeof FUNNEL_COLORS]} />
+                {funnelDistribution.map((entry: { stage: string }) => (
+                  <Cell key={`cell-${entry.stage}`} fill={FUNNEL_COLORS[entry.stage as keyof typeof FUNNEL_COLORS] ?? '#94A3B8'} />
                 ))}
               </Bar>
             </BarChart>
@@ -110,11 +132,10 @@ export function PerformanceView() {
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* ── Creative Benchmark ── */}
       <SubSection label="Creative Benchmark" />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {creativeScorecards.map((card) => (
+        {creativeScorecards.map((card: typeof mockScorecards[0]) => (
           <KpiCard key={card.label} label={card.label} value={card.value} delta={card.delta} direction="up" />
         ))}
       </div>
@@ -122,16 +143,13 @@ export function PerformanceView() {
       <p className="text-sm font-semibold mb-4">Top 10 New Creatives This Week</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
-        {topCreatives.map((creative) => {
+        {topCreatives.map((creative: typeof mockTopCreatives[0]) => {
           const platformColor = PLATFORM_BADGE_COLORS[creative.platform] ?? '#888'
           const sentimentPct = ((creative.sentiment + 1) / 2) * 100
           const brandInitial = creative.brand.charAt(0).toUpperCase()
 
           return (
-            <div
-              key={creative.id}
-              className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow"
-            >
+            <div key={creative.id} className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow">
               <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
                 {creative.thumbnail ? (
                   <img
@@ -152,11 +170,7 @@ export function PerformanceView() {
               </div>
               <div className="p-3">
                 <div className="flex items-center justify-between gap-1">
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 border font-medium"
-                    style={{ borderColor: platformColor, color: platformColor }}
-                  >
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border font-medium" style={{ borderColor: platformColor, color: platformColor }}>
                     {creative.platform}
                   </Badge>
                   <span className="text-sm font-bold tabular-nums" style={{ color: piColor(creative.performanceIndex) }}>

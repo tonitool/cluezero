@@ -1,29 +1,21 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import {
-  Bar,
-  BarChart,
-  Line,
-  LineChart,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Cell,
+  Bar, BarChart, Line, LineChart,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { BRAND_COLORS, PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
 import {
-  platformDistributionByAdvertiser,
-  platformStrategyComparison,
-  newAdsByAdvertiserPlatform,
-  performanceIndexRanking,
-  topicDistribution,
-  topicByAdvertiser,
-  newAdsByTopic,
+  platformDistributionByAdvertiser as mockPlatDist,
+  platformStrategyComparison as mockPlatStrategy,
+  newAdsByAdvertiserPlatform as mockNewAdsByPlatform,
+  performanceIndexRanking as mockPiRanking,
+  topicDistribution as mockTopicDist,
+  topicByAdvertiser as mockTopicByAdv,
+  newAdsByTopic as mockNewAdsByTopic,
   audienceMinAgeDistribution,
   audienceMaxAgeDistribution,
   audienceGenderDistribution,
@@ -32,27 +24,61 @@ import {
 
 const BRAND_COLOR_VALUES = Object.values(BRAND_COLORS)
 
-const TOPIC_COLORS: Record<string, string> = {
-  shop:            '#6366F1',
-  existing:        '#0EA5E9',
-  laden:           '#10B981',
-  stellenanzeigen: '#F59E0B',
-  waschen:         '#E4002B',
-}
+// Palette for dynamic topics
+const TOPIC_PALETTE = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#E4002B', '#8B5CF6', '#EC4899', '#14B8A6']
 
 function SubSection({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 my-6">
       <div className="h-px flex-1 bg-border" />
-      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">
-        {label}
-      </span>
+      <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">{label}</span>
       <div className="h-px flex-1 bg-border" />
     </div>
   )
 }
 
-export function CompetitiveView() {
+interface Props { workspaceId?: string }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CompetitiveData = Record<string, any>
+
+export function CompetitiveView({ workspaceId }: Props) {
+  const [data, setData] = useState<CompetitiveData | null>(null)
+  const [loading, setLoading] = useState(!!workspaceId)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    setLoading(true)
+    fetch(`/api/data/competitive?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => { if (d.hasData) setData(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [workspaceId])
+
+  if (loading) return (
+    <div>
+      <SectionHeader title="Competitive Intelligence" description="Advertiser benchmarks, topic investment, and audience targeting analysis" />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {[1,2,3,4].map(i => <div key={i} className="h-72 bg-zinc-100 rounded-lg animate-pulse" />)}
+      </div>
+    </div>
+  )
+
+  const performanceIndexRanking    = data?.performanceIndexRanking    ?? mockPiRanking
+  const topicDistribution          = data?.topicDistribution          ?? mockTopicDist
+  const topicByAdvertiser          = data?.topicByAdvertiser          ?? mockTopicByAdv
+  const newAdsByTopic              = data?.newAdsByTopic              ?? mockNewAdsByTopic
+  const platformDistributionByAdvertiser = data?.platformDistributionByAdvertiser ?? mockPlatDist
+  const platformStrategyComparison = data?.platformStrategyComparison ?? mockPlatStrategy
+  // For new ads by advertiser/platform, keep mock since we don't have cross-platform data
+  const newAdsByAdvertiserPlatform = mockNewAdsByPlatform
+
+  // Dynamic topic keys from real data (or fall back to mock hardcoded keys)
+  const topTopicKeys: string[] = data?.topTopicKeys ?? ['shop', 'existing', 'laden', 'stellenanzeigen', 'waschen']
+  const topicColorMap: Record<string, string> = {}
+  topTopicKeys.forEach((k, i) => { topicColorMap[k] = TOPIC_PALETTE[i % TOPIC_PALETTE.length] })
+
   return (
     <div>
       <SectionHeader
@@ -60,7 +86,6 @@ export function CompetitiveView() {
         description="Advertiser benchmarks, topic investment, and audience targeting analysis"
       />
 
-      {/* ── Advertiser Benchmark ── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ChartCard title="Platform Distribution by Advertiser" height={280}>
           <div style={{ width: '100%', height: '100%' }}>
@@ -121,11 +146,11 @@ export function CompetitiveView() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={performanceIndexRanking} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} domain={[0, 80]} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} domain={[0, 'auto']} />
                 <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
                 <Tooltip />
                 <Bar dataKey="score" name="PI Score" radius={[0, 3, 3, 0]}>
-                  {performanceIndexRanking.map((entry) => (
+                  {performanceIndexRanking.map((entry: { advertiser: string }) => (
                     <Cell key={entry.advertiser} fill={entry.advertiser === 'ORLEN' ? BRAND_COLORS.orlen : '#94A3B8'} />
                   ))}
                 </Bar>
@@ -135,7 +160,6 @@ export function CompetitiveView() {
         </ChartCard>
       </div>
 
-      {/* ── Topic Benchmark ── */}
       <SubSection label="Topic Benchmark" />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -147,7 +171,7 @@ export function CompetitiveView() {
               <YAxis type="category" dataKey="topic" tick={{ fontSize: 11 }} width={76} />
               <Tooltip />
               <Bar dataKey="totalAds" radius={[0, 4, 4, 0]}>
-                {topicDistribution.map((_, index) => (
+                {topicDistribution.map((_: unknown, index: number) => (
                   <Cell key={`cell-${index}`} fill={BRAND_COLOR_VALUES[index % BRAND_COLOR_VALUES.length]} />
                 ))}
               </Bar>
@@ -163,11 +187,9 @@ export function CompetitiveView() {
               <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} width={60} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="shop" name="Shop" stackId="a" fill={TOPIC_COLORS.shop} />
-              <Bar dataKey="existing" name="Existing" stackId="a" fill={TOPIC_COLORS.existing} />
-              <Bar dataKey="laden" name="Laden" stackId="a" fill={TOPIC_COLORS.laden} />
-              <Bar dataKey="stellenanzeigen" name="Stellenanzeigen" stackId="a" fill={TOPIC_COLORS.stellenanzeigen} />
-              <Bar dataKey="waschen" name="Waschen" stackId="a" fill={TOPIC_COLORS.waschen} radius={[0, 4, 4, 0]} />
+              {topTopicKeys.map((tKey, i) => (
+                <Bar key={tKey} dataKey={tKey} name={tKey.replace(/_/g, ' ')} stackId="a" fill={TOPIC_PALETTE[i % TOPIC_PALETTE.length]} radius={i === topTopicKeys.length - 1 ? [0, 4, 4, 0] : undefined} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -181,14 +203,13 @@ export function CompetitiveView() {
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {Object.entries(TOPIC_COLORS).map(([key, color]) => (
-              <Line key={key} type="monotone" dataKey={key} name={key.charAt(0).toUpperCase() + key.slice(1)} stroke={color} strokeWidth={2} dot={false} />
+            {topTopicKeys.map((tKey, i) => (
+              <Line key={tKey} type="monotone" dataKey={tKey} name={tKey.replace(/_/g, ' ')} stroke={topicColorMap[tKey] ?? TOPIC_PALETTE[i % TOPIC_PALETTE.length]} strokeWidth={2} dot={false} />
             ))}
           </LineChart>
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* ── Audience Benchmark ── */}
       <SubSection label="Audience Benchmark" />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

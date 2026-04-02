@@ -18,6 +18,7 @@ import {
   Brain,
   LogOut,
   CircleUser,
+  TrendingUp,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -52,6 +53,7 @@ import { ClueZeroMark } from '@/components/brand/logo'
 
 import { HomeView }            from './views/home-view'
 import { OverviewView }        from './views/overview-view'
+import { MovementView }        from './views/movement-view'
 import { CompetitiveView }     from './views/competitive-view'
 import { PerformanceView }     from './views/performance-view'
 import { OrlenView }           from './views/orlen-view'
@@ -65,7 +67,7 @@ import { AccountView }         from './views/account-view'
 
 type ViewId =
   | 'home'
-  | 'overview' | 'competitive' | 'performance' | 'orlen'
+  | 'overview' | 'movement' | 'competitive' | 'performance' | 'orlen'
   | 'ai' | 'creative-library' | 'strategy'
   | 'alerts'
   | 'connections' | 'setup' | 'account'
@@ -81,9 +83,10 @@ const NAV_GROUPS = [
     label: 'Reporting',
     items: [
       { id: 'overview'          as ViewId, label: 'Market Overview',         icon: LayoutDashboard },
+      { id: 'movement'          as ViewId, label: 'Weekly Movement',          icon: TrendingUp },
       { id: 'competitive'       as ViewId, label: 'Competitive Intelligence', icon: Users },
       { id: 'performance'       as ViewId, label: 'Campaign Performance',     icon: BarChart3 },
-      { id: 'orlen'             as ViewId, label: 'ORLEN Deep Dive',          icon: Sparkles },
+      { id: 'orlen'             as ViewId, label: 'Brand Deep Dive',           icon: Sparkles },
     ],
   },
   {
@@ -125,9 +128,10 @@ interface Props {
   workspaceId: string
   workspaceName: string
   workspaceSlug: string
+  ownBrand?: string
 }
 
-export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspaceSlug }: Props) {
+export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspaceSlug, ownBrand = '' }: Props) {
   const [view, setView] = useState<ViewId>('home')
   const [week, setWeek] = useState('w14')
   const router = useRouter()
@@ -178,7 +182,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
                         className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
                       >
                         <item.icon className="size-4" />
-                        <span>{item.label}</span>
+                        <span>{item.id === 'orlen' && ownBrand ? `${ownBrand} Deep Dive` : item.label}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
@@ -253,17 +257,18 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
         </header>
 
         <main className="p-6">
-          {view === 'home'             && <HomeView workspaceName={workspaceName} onNavigate={setView} />}
-          {view === 'overview'         && <OverviewView />}
-          {view === 'competitive'      && <CompetitiveView />}
-          {view === 'performance'      && <PerformanceView />}
-          {view === 'orlen'            && <OrlenView />}
+          {view === 'home'             && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={setView} />}
+          {view === 'overview'         && <OverviewView workspaceId={workspaceId} />}
+          {view === 'movement'         && <MovementView workspaceId={workspaceId} />}
+          {view === 'competitive'      && <CompetitiveView workspaceId={workspaceId} />}
+          {view === 'performance'      && <PerformanceView workspaceId={workspaceId} />}
+          {view === 'orlen'            && <OrlenView workspaceId={workspaceId} ownBrand={ownBrand} />}
           {view === 'ai'               && <AiInsightsView />}
           {view === 'creative-library' && <CreativeLibraryView />}
           {view === 'strategy'         && <StrategyView />}
           {view === 'alerts'           && <AlertsView />}
-          {view === 'connections'      && <ConnectionsView />}
-          {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} />}
+          {view === 'connections'      && <ConnectionsView workspaceId={workspaceId} />}
+          {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
           {view === 'account'          && <AccountView />}
         </main>
       </SidebarInset>

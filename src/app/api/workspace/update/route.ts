@@ -3,10 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function PATCH(req: NextRequest) {
-  const { workspaceId, name, slug } = await req.json() as {
+  const { workspaceId, name, slug, ownBrand } = await req.json() as {
     workspaceId: string
     name: string
     slug: string
+    ownBrand?: string
   }
 
   if (!workspaceId || !name || !slug) {
@@ -55,12 +56,12 @@ export async function PATCH(req: NextRequest) {
 
   const { error: updateError } = await admin
     .from('workspaces')
-    .update({ name, slug })
+    .update({ name, slug, ...(ownBrand !== undefined ? { own_brand: ownBrand || null } : {}) })
     .eq('id', workspaceId)
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ name, slug })
+  return NextResponse.json({ name, slug, ownBrand: ownBrand ?? null })
 }

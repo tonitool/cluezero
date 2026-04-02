@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   ArrowRight,
   Sparkles,
@@ -44,6 +44,8 @@ type ViewId =
 
 interface Props {
   workspaceName: string
+  workspaceId?: string
+  ownBrand?: string
   onNavigate: (view: ViewId) => void
 }
 
@@ -103,7 +105,7 @@ const EXPLORE_SHORTCUTS = [
   {
     id: 'orlen' as ViewId,
     icon: Sparkles,
-    label: 'ORLEN Deep Dive',
+    label: 'Brand Deep Dive',
     description: 'Brand scorecard vs market opportunities',
     color: '#18181b',
   },
@@ -166,7 +168,7 @@ function PI_COLOR(pi: number) {
   return pi > 70 ? '#16a34a' : pi > 50 ? '#d97706' : '#dc2626'
 }
 
-function SmartWidgetCard({ widget, onNavigate }: { widget: SmartWidget; onNavigate: (v: ViewId) => void }) {
+function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidget; onNavigate: (v: ViewId) => void; spendData: typeof weeklySpendMovement }) {
   if (widget.type === 'spend-chart') {
     return (
       <div className="bg-white rounded-lg border border-border shadow-sm p-5">
@@ -176,7 +178,7 @@ function SmartWidgetCard({ widget, onNavigate }: { widget: SmartWidget; onNaviga
         </div>
         <div style={{ height: 200 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weeklySpendMovement} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <BarChart data={spendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <XAxis dataKey="week" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `€${(v/1000).toFixed(0)}k`} />
               <Tooltip formatter={(v: unknown) => [`€${Number(v).toLocaleString()}`, undefined] as [string, undefined]} />
@@ -286,15 +288,67 @@ function SmartWidgetCard({ widget, onNavigate }: { widget: SmartWidget; onNaviga
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function HomeView({ workspaceName, onNavigate }: Props) {
+export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate }: Props) {
   const [query, setQuery] = useState('')
   const [submitted, setSubmitted] = useState('')
   const [widgets, setWidgets] = useState<SmartWidget[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const resultsRef = useRef<HTMLDivElement>(null)
 
+  // Real data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [liveData, setLiveData] = useState<Record<string, any> | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [liveCreatives, setLiveCreatives] = useState<any[] | null>(null)
+  const [loading, setLoading] = useState(!!workspaceId)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    const brand = ownBrand ? `&brand=${encodeURIComponent(ownBrand)}` : ''
+    let overviewDone = false
+    let performanceDone = false
+    function checkDone() {
+      if (overviewDone && performanceDone) setLoading(false)
+    }
+    fetch(`/api/data/overview?workspaceId=${workspaceId}${brand}`)
+      .then(r => r.json())
+      .then(d => { if (d.hasData) setLiveData(d) })
+      .catch(() => {})
+      .finally(() => { overviewDone = true; checkDone() })
+    fetch(`/api/data/performance?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => { if (d.hasData && d.topCreatives?.length) setLiveCreatives(d.topCreatives) })
+      .catch(() => {})
+      .finally(() => { performanceDone = true; checkDone() })
+  }, [workspaceId, ownBrand])
+
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
+  if (loading) return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-8 w-64 bg-zinc-100 rounded-lg animate-pulse" />
+          <div className="h-4 w-48 bg-zinc-100 rounded mt-2 animate-pulse" />
+        </div>
+      </div>
+      <div className="h-48 bg-zinc-100 rounded-xl animate-pulse" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[1,2,3,4].map(i => <div key={i} className="h-28 bg-zinc-100 rounded-lg animate-pulse" />)}
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 space-y-3">
+          {[1,2,3].map(i => <div key={i} className="h-20 bg-zinc-100 rounded-lg animate-pulse" />)}
+        </div>
+        <div className="h-64 bg-zinc-100 rounded-lg animate-pulse" />
+      </div>
+    </div>
+  )
+
+  const kpiMetrics = liveData?.executiveMetrics ?? executiveMetrics
+  const spendChartData = liveData?.weeklySpendMovement ?? weeklySpendMovement
+  const brandLabel = ownBrand || 'ORLEN'
 
   function handleSubmit(q: string) {
     if (!q.trim()) return
@@ -407,7 +461,7 @@ export function HomeView({ workspaceName, onNavigate }: Props) {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {widgets.map((w, i) => (
-              <SmartWidgetCard key={i} widget={w} onNavigate={onNavigate} />
+              <SmartWidgetCard key={i} widget={w} onNavigate={onNavigate} spendData={spendChartData} />
             ))}
           </div>
           <div className="h-px bg-border" />
@@ -416,7 +470,7 @@ export function HomeView({ workspaceName, onNavigate }: Props) {
 
       {/* ── KPI strip ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {executiveMetrics.map(m => (
+        {kpiMetrics.map((m: typeof executiveMetrics[0]) => (
           <KpiCard key={m.label} label={m.label} value={m.value} delta={m.delta} direction={m.direction} />
         ))}
       </div>
@@ -517,7 +571,9 @@ export function HomeView({ workspaceName, onNavigate }: Props) {
                 >
                   <Icon className="size-5" style={{ color: item.color }} />
                 </div>
-                <p className="text-sm font-semibold mb-1 group-hover:text-foreground">{item.label}</p>
+                <p className="text-sm font-semibold mb-1 group-hover:text-foreground">
+                  {item.id === 'orlen' && ownBrand ? `${ownBrand} Deep Dive` : item.label}
+                </p>
                 <p className="text-xs text-muted-foreground leading-snug">{item.description}</p>
                 <div className="flex items-center gap-1 mt-3 text-xs font-medium" style={{ color: item.color }}>
                   Explore <ArrowRight className="size-3" />
@@ -540,32 +596,58 @@ export function HomeView({ workspaceName, onNavigate }: Props) {
           </button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-          {creativeLibrary.slice(0, 5).map(c => {
-            const brandColor = (BRAND_COLORS as Record<string, string>)[c.brand.toLowerCase().replace(' ', '')] ?? '#888'
-            const platformColor = PLATFORM_COLOR(c.platform)
-            const sentimentPct = ((c.sentiment + 1) / 2) * 100
-            return (
-              <div
-                key={c.id}
-                className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
-                onClick={() => onNavigate('creative-library')}
-              >
-                <div className="aspect-video bg-muted flex items-center justify-center">
-                  <span className="text-xl font-bold" style={{ color: brandColor }}>{c.brand.charAt(0)}</span>
-                </div>
-                <div className="p-2.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-semibold" style={{ color: platformColor }}>{c.platform}</span>
-                    <span className="text-xs font-bold" style={{ color: PI_COLOR(c.performanceIndex) }}>{c.performanceIndex}</span>
+          {liveCreatives
+            ? liveCreatives.slice(0, 5).map((c: { id: string; brand: string; headline: string; pi: number; funnelStage: string }) => {
+                const brandColor = (BRAND_COLORS as Record<string, string>)[c.brand.toLowerCase().replace(/[\s\-_]/g, '')] ?? '#888'
+                return (
+                  <div
+                    key={c.id}
+                    className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+                    onClick={() => onNavigate('creative-library')}
+                  >
+                    <div className="aspect-video bg-muted flex items-center justify-center">
+                      <span className="text-xl font-bold" style={{ color: brandColor }}>{c.brand.charAt(0)}</span>
+                    </div>
+                    <div className="p-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-semibold text-muted-foreground">{c.funnelStage}</span>
+                        <span className="text-xs font-bold" style={{ color: PI_COLOR(c.pi) }}>{c.pi}</span>
+                      </div>
+                      <p className="text-[11px] font-medium line-clamp-2 leading-snug">{c.headline}</p>
+                      <div className="mt-2">
+                        <Progress value={(c.pi / 100) * 100} className="h-1 mt-0.5" />
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-[11px] font-medium line-clamp-2 leading-snug">{c.title}</p>
-                  <div className="mt-2">
-                    <Progress value={sentimentPct} className="h-1 mt-0.5" />
+                )
+              })
+            : creativeLibrary.slice(0, 5).map(c => {
+                const brandColor = (BRAND_COLORS as Record<string, string>)[c.brand.toLowerCase().replace(' ', '')] ?? '#888'
+                const platformColor = PLATFORM_COLOR(c.platform)
+                const sentimentPct = ((c.sentiment + 1) / 2) * 100
+                return (
+                  <div
+                    key={c.id}
+                    className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+                    onClick={() => onNavigate('creative-library')}
+                  >
+                    <div className="aspect-video bg-muted flex items-center justify-center">
+                      <span className="text-xl font-bold" style={{ color: brandColor }}>{c.brand.charAt(0)}</span>
+                    </div>
+                    <div className="p-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-semibold" style={{ color: platformColor }}>{c.platform}</span>
+                        <span className="text-xs font-bold" style={{ color: PI_COLOR(c.performanceIndex) }}>{c.performanceIndex}</span>
+                      </div>
+                      <p className="text-[11px] font-medium line-clamp-2 leading-snug">{c.title}</p>
+                      <div className="mt-2">
+                        <Progress value={sentimentPct} className="h-1 mt-0.5" />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )
-          })}
+                )
+              })
+          }
         </div>
       </div>
 

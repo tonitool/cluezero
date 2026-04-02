@@ -40,9 +40,10 @@ interface Props {
   workspaceId: string
   workspaceName: string
   workspaceSlug: string
+  ownBrand?: string
 }
 
-export function SetupView({ workspaceId, workspaceName, workspaceSlug }: Props) {
+export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand: initialOwnBrand = '' }: Props) {
   const router = useRouter()
   const [brands, setBrands] = useState(trackedBrands)
   const [refreshCadence, setRefreshCadence] = useState('daily')
@@ -53,6 +54,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug }: Props) 
   // Workspace details
   const [wsName, setWsName] = useState(workspaceName)
   const [wsSlug, setWsSlug] = useState(workspaceSlug)
+  const [wsOwnBrand, setWsOwnBrand] = useState(initialOwnBrand)
   const [savingWs, setSavingWs] = useState(false)
   const [wsFeedback, setWsFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
@@ -69,7 +71,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug }: Props) 
     const res = await fetch('/api/workspace/update', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId, name: wsName, slug: wsSlug }),
+      body: JSON.stringify({ workspaceId, name: wsName, slug: wsSlug, ownBrand: wsOwnBrand }),
     })
     const data = await res.json()
     setSavingWs(false)
@@ -84,7 +86,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug }: Props) 
     }
   }
 
-  const wsChanged = wsName !== workspaceName || wsSlug !== workspaceSlug
+  const wsChanged = wsName !== workspaceName || wsSlug !== workspaceSlug || wsOwnBrand !== initialOwnBrand
 
   function toggleBrand(id: string) {
     setBrands(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b))
@@ -131,6 +133,17 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug }: Props) 
               onChange={e => handleNameChange(e.target.value)}
               className="h-8 text-sm"
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ws-own-brand" className="text-xs">Your brand name</Label>
+            <Input
+              id="ws-own-brand"
+              value={wsOwnBrand}
+              onChange={e => setWsOwnBrand(e.target.value)}
+              placeholder="e.g. ORLEN"
+              className="h-8 text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">Used in the Brand Deep Dive view to show your brand vs market.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="ws-slug" className="text-xs">URL slug</Label>

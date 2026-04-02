@@ -73,10 +73,14 @@ type Credentials = {
 type Mapping = {
   table: string
   brandCol: string
+  dateCol: string
   headlineCol: string
   spendCol: string
   impressionsCol: string
-  dateCol: string
+  reachCol: string
+  piCol: string
+  funnelCol: string
+  topicCol: string
 }
 
 const STEPS: { id: Step; label: string; icon: React.ElementType }[] = [
@@ -104,16 +108,18 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConnected: () => void
+  workspaceId?: string
 }
 
-export function SnowflakeConnectSheet({ open, onOpenChange, onConnected }: Props) {
+export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspaceId }: Props) {
   const [step, setStep] = useState<Step>('credentials')
   const [creds, setCreds] = useState<Credentials>({
     account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '',
   })
   const [mapping, setMapping] = useState<Mapping>({
-    table: '', brandCol: 'brand_name', headlineCol: 'ad_headline',
-    spendCol: 'est_spend_eur', impressionsCol: 'impressions', dateCol: 'week_start',
+    table: '', brandCol: 'BRAND', dateCol: 'DATE',
+    headlineCol: 'HEADLINE', spendCol: 'SPEND', impressionsCol: 'IMPRESSIONS',
+    reachCol: 'REACH', piCol: 'PI', funnelCol: 'FUNNEL', topicCol: 'TOPIC',
   })
   const [testChecks, setTestChecks] = useState<'idle' | 'running' | 'done' | 'failed'>('idle')
   const [completedChecks, setCompletedChecks] = useState<number>(0)
@@ -122,7 +128,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected }: Props
   function resetSheet() {
     setStep('credentials')
     setCreds({ account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '' })
-    setMapping({ table: '', brandCol: 'brand_name', headlineCol: 'ad_headline', spendCol: 'est_spend_eur', impressionsCol: 'impressions', dateCol: 'week_start' })
+    setMapping({ table: '', brandCol: 'BRAND', dateCol: 'DATE', headlineCol: 'HEADLINE', spendCol: 'SPEND', impressionsCol: 'IMPRESSIONS', reachCol: 'REACH', piCol: 'PI', funnelCol: 'FUNNEL', topicCol: 'TOPIC' })
     setTestChecks('idle')
     setCompletedChecks(0)
     setTestError(null)
@@ -149,27 +155,98 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected }: Props
 
   // ── Test step ─────────────────────────────────────────────────────────────
 
-  function runTest() {
+  async function runTest() {
     setTestChecks('running')
     setCompletedChecks(0)
     setTestError(null)
 
+    // Animate through the first 5 checks while the real API call is in-flight
     let i = 0
     const interval = setInterval(() => {
       i++
-      setCompletedChecks(i)
-
-      if (i === TEST_CHECKS.length) {
-        clearInterval(interval)
-        // Simulate success (always succeeds in mock)
-        setTimeout(() => {
-          setTestChecks('done')
-        }, 400)
+      if (i < TEST_CHECKS.length) {
+        setCompletedChecks(i)
       }
-    }, 480)
+    }, 500)
+
+    try {
+      const res = await fetch('/api/snowflake/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creds: {
+            account:   creds.account,
+            username:  creds.username,
+            password:  creds.password,
+            role:      creds.role || undefined,
+            warehouse: creds.warehouse,
+            database:  creds.database,
+            schema:    creds.schema,
+          },
+          mapping: {
+            table:          mapping.table,
+            colBrand:       mapping.brandCol,
+            colDate:        mapping.dateCol,
+            colHeadline:    mapping.headlineCol    || undefined,
+            colSpend:       mapping.spendCol       || undefined,
+            colImpressions: mapping.impressionsCol || undefined,
+            colReach:       mapping.reachCol       || undefined,
+            colPi:          mapping.piCol          || undefined,
+            colFunnel:      mapping.funnelCol      || undefined,
+            colTopic:       mapping.topicCol       || undefined,
+          },
+        }),
+      })
+
+      clearInterval(interval)
+      const data = await res.json()
+
+      if (data.ok) {
+        setCompletedChecks(TEST_CHECKS.length)
+        setTimeout(() => setTestChecks('done'), 300)
+      } else {
+        setTestError(data.error ?? 'Connection failed')
+        setTestChecks('failed')
+      }
+    } catch {
+      clearInterval(interval)
+      setTestError('Network error — could not reach the server')
+      setTestChecks('failed')
+    }
   }
 
-  function handleFinish() {
+  async function handleFinish() {
+    // Save the connection to Supabase if we have a workspaceId
+    if (workspaceId) {
+      await fetch('/api/snowflake/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId,
+          creds: {
+            account:   creds.account,
+            username:  creds.username,
+            password:  creds.password,
+            role:      creds.role || undefined,
+            warehouse: creds.warehouse,
+            database:  creds.database,
+            schema:    creds.schema,
+          },
+          mapping: {
+            table:          mapping.table,
+            colBrand:       mapping.brandCol,
+            colDate:        mapping.dateCol,
+            colHeadline:    mapping.headlineCol    || undefined,
+            colSpend:       mapping.spendCol       || undefined,
+            colImpressions: mapping.impressionsCol || undefined,
+            colReach:       mapping.reachCol       || undefined,
+            colPi:          mapping.piCol          || undefined,
+            colFunnel:      mapping.funnelCol      || undefined,
+            colTopic:       mapping.topicCol       || undefined,
+          },
+        }),
+      })
+    }
     onConnected()
     handleOpenChange(false)
   }
@@ -361,11 +438,15 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected }: Props
                 <p className="text-[11px] text-muted-foreground -mt-2">Map your table columns to ClueZero fields. Leave blank to skip a field.</p>
 
                 {([
-                  { id: 'brandCol',       label: 'Brand / advertiser',     placeholder: 'brand_name',    required: true  },
-                  { id: 'headlineCol',    label: 'Ad headline / creative',  placeholder: 'ad_headline',   required: false },
-                  { id: 'spendCol',       label: 'Estimated spend (€)',     placeholder: 'est_spend_eur', required: false },
-                  { id: 'impressionsCol', label: 'Impressions',             placeholder: 'impressions',   required: false },
-                  { id: 'dateCol',        label: 'Date / week start',       placeholder: 'week_start',    required: true  },
+                  { id: 'brandCol',       label: 'Brand / advertiser',     placeholder: 'BRAND',       required: true  },
+                  { id: 'dateCol',        label: 'Date / week start',       placeholder: 'DATE',        required: true  },
+                  { id: 'headlineCol',    label: 'Ad headline / creative',  placeholder: 'HEADLINE',    required: false },
+                  { id: 'spendCol',       label: 'Estimated spend (€)',     placeholder: 'SPEND',       required: false },
+                  { id: 'impressionsCol', label: 'Impressions',             placeholder: 'IMPRESSIONS', required: false },
+                  { id: 'reachCol',       label: 'Reach',                   placeholder: 'REACH',       required: false },
+                  { id: 'piCol',          label: 'Performance index (PI)',   placeholder: 'PI',          required: false },
+                  { id: 'funnelCol',      label: 'Funnel stage',            placeholder: 'FUNNEL',      required: false },
+                  { id: 'topicCol',       label: 'Topic / category',        placeholder: 'TOPIC',       required: false },
                 ] as { id: keyof Mapping; label: string; placeholder: string; required: boolean }[]).map(field => (
                   <div key={field.id} className="flex flex-col gap-1.5">
                     <Label htmlFor={`sf-${field.id}`} className="text-xs">

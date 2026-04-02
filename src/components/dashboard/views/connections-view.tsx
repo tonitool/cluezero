@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CheckCircle2, XCircle, AlertCircle, Clock, RefreshCcw, Plus, Plug } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { SnowflakeConnectSheet } from '@/components/dashboard/_components/snowflake-connect-sheet'
@@ -31,14 +31,111 @@ function formatSyncTime(iso: string | null): string {
   return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-export function ConnectionsView() {
-  const [connections, setConnections] = useState<Connection[]>(initialConnections)
+interface Props {
+  workspaceId?: string
+}
+
+const MOCK_DISCONNECTED_KEY = 'connections_disconnected'
+
+function loadMockOverrides(): Set<string> {
+  try {
+    const raw = localStorage.getItem(MOCK_DISCONNECTED_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch { return new Set() }
+}
+
+function saveMockOverrides(ids: Set<string>) {
+  localStorage.setItem(MOCK_DISCONNECTED_KEY, JSON.stringify([...ids]))
+}
+
+export function ConnectionsView({ workspaceId }: Props) {
+  const [connections, setConnections] = useState<Connection[]>(() => {
+    const disconnected = loadMockOverrides()
+    return initialConnections.map(c =>
+      disconnected.has(c.id) ? { ...c, status: 'disconnected' as const, lastSync: null, recordCount: null } : c
+    )
+  })
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [snowflakeSheetOpen, setSnowflakeSheetOpen] = useState(false)
 
+  // Load real Snowflake connection status on mount
+  useEffect(() => {
+    if (!workspaceId) return
+    fetch(`/api/snowflake/status?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.connected) {
+          setConnections(prev => prev.map(c =>
+            c.id === 'snowflake'
+              ? { ...c, status: 'connected', lastSync: d.lastSync, recordCount: d.recordCount ?? 0 }
+              : c
+          ))
+        }
+      })
+      .catch(() => {})
+  }, [workspaceId])
+
   function handleSync(id: string) {
+    if (id === 'snowflake' && workspaceId) {
+      setSyncing(id)
+      fetch('/api/sync/snowflake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok) {
+            setConnections(prev => prev.map(c =>
+              c.id === 'snowflake'
+                ? { ...c, lastSync: new Date().toISOString(), recordCount: d.inserted ?? 0 }
+                : c
+            ))
+          }
+        })
+        .finally(() => setSyncing(null))
+      return
+    }
     setSyncing(id)
     setTimeout(() => setSyncing(null), 2000)
+  }
+
+  function handleConfigure(id: string) {
+    if (id === 'snowflake') {
+      setSnowflakeSheetOpen(true)
+    }
+    // Other connections: no-op for now
+  }
+
+  function handleDisconnect(id: string) {
+    if (id === 'snowflake' && workspaceId) {
+      setDisconnecting(id)
+      fetch('/api/snowflake/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok) {
+            setConnections(prev => prev.map(c =>
+              c.id === 'snowflake'
+                ? { ...c, status: 'disconnected', lastSync: null, recordCount: null }
+                : c
+            ))
+          }
+        })
+        .finally(() => setDisconnecting(null))
+      return
+    }
+    // For mock connections persist to localStorage so it survives refresh
+    const overrides = loadMockOverrides()
+    overrides.add(id)
+    saveMockOverrides(overrides)
+    setConnections(prev => prev.map(c =>
+      c.id === id ? { ...c, status: 'disconnected' as const, lastSync: null, recordCount: null } : c
+    ))
   }
 
   function handleSnowflakeConnected() {
@@ -60,6 +157,7 @@ export function ConnectionsView() {
         open={snowflakeSheetOpen}
         onOpenChange={setSnowflakeSheetOpen}
         onConnected={handleSnowflakeConnected}
+        workspaceId={workspaceId}
       />
 
       <SectionHeader
@@ -95,6 +193,7 @@ export function ConnectionsView() {
           const StatusIcon = status.icon
           const color = PLATFORM_COLORS[conn.platform] ?? '#888'
           const isSyncing = syncing === conn.id
+          const isDisconnecting = disconnecting === conn.id
 
           return (
             <div
@@ -104,7 +203,6 @@ export function ConnectionsView() {
               {/* Header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  {/* Platform dot */}
                   <div
                     className="size-9 rounded-lg flex items-center justify-center shrink-0"
                     style={{ backgroundColor: `${color}15`, border: `1.5px solid ${color}30` }}
@@ -156,19 +254,48 @@ export function ConnectionsView() {
                       size="sm"
                       className="h-7 gap-1.5 text-xs"
                       onClick={() => handleSync(conn.id)}
-                      disabled={isSyncing}
+                      disabled={isSyncing || isDisconnecting}
                     >
                       <RefreshCcw className={cn('size-3', isSyncing && 'animate-spin')} />
                       {isSyncing ? 'Syncing…' : 'Sync Now'}
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs">Configure</Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => handleConfigure(conn.id)}
+                      disabled={isDisconnecting}
+                    >
+                      Configure
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 ml-auto"
+                      onClick={() => handleDisconnect(conn.id)}
+                      disabled={isSyncing || isDisconnecting}
+                    >
+                      {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                    </Button>
                   </>
                 ) : conn.status === 'disconnected' ? (
                   <Button
                     size="sm"
                     className="h-7 gap-1.5 text-xs"
                     onClick={() => {
-                      if (conn.id === 'snowflake') setSnowflakeSheetOpen(true)
+                      if (conn.id === 'snowflake') {
+                        setSnowflakeSheetOpen(true)
+                      } else {
+                        // Clear the persisted override so it shows connected again
+                        const overrides = loadMockOverrides()
+                        overrides.delete(conn.id)
+                        saveMockOverrides(overrides)
+                        setConnections(prev => prev.map(c =>
+                          c.id === conn.id
+                            ? { ...initialConnections.find(i => i.id === conn.id)! }
+                            : c
+                        ))
+                      }
                     }}
                   >
                     <Plus className="size-3" />

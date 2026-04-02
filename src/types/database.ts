@@ -12,17 +12,20 @@ export interface Database {
           id: string
           name: string
           slug: string
+          own_brand: string | null
           created_at: string
         }
         Insert: {
           id?: string
           name: string
           slug: string
+          own_brand?: string | null
           created_at?: string
         }
         Update: {
           name?: string
           slug?: string
+          own_brand?: string | null
         }
       }
       workspace_members: {

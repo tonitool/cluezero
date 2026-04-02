@@ -21,11 +21,25 @@ export default async function WorkspaceDashboardPage({
   )
 
   // Fetch workspace by slug
-  const { data: workspace } = await admin
+  // Fetch workspace — try with own_brand first, fall back if column doesn't exist yet
+  let workspace: { id: string; name: string; slug: string; own_brand?: string | null } | null = null
+  const { data: wsWithBrand, error: wsError } = await admin
     .from('workspaces')
-    .select('id, name, slug')
+    .select('id, name, slug, own_brand')
     .eq('slug', workspaceSlug)
     .single()
+
+  if (!wsError) {
+    workspace = wsWithBrand
+  } else {
+    // Column may not exist yet — fall back to base fields
+    const { data: wsBase } = await admin
+      .from('workspaces')
+      .select('id, name, slug')
+      .eq('slug', workspaceSlug)
+      .single()
+    workspace = wsBase ? { ...wsBase, own_brand: null } : null
+  }
 
   if (!workspace) notFound()
 
@@ -44,6 +58,7 @@ export default async function WorkspaceDashboardPage({
       workspaceId={workspace.id}
       workspaceName={workspace.name}
       workspaceSlug={workspace.slug}
+      ownBrand={workspace.own_brand ?? ''}
     />
   )
 }
