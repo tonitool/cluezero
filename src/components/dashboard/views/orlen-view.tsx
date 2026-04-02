@@ -95,7 +95,7 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN' }: Props) {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {orlenVsMarketScorecards.map((item: typeof mockScorecards[0]) => (
+        {orlenVsMarketScorecards.map((item: { label: string; orlen: number | string; market: number | string }) => (
           <div key={item.label} className="bg-white rounded-lg border border-border shadow-sm p-4">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">{item.label}</p>
             <div className="flex items-end gap-4">
