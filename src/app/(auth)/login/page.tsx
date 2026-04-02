@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { BarChart3, CheckCircle2, Eye, EyeOff, Loader2, Zap, Brain, ImageIcon } from 'lucide-react'
+import { BarChart3, AlertCircle, Eye, EyeOff, Loader2, Zap, Brain, ImageIcon } from 'lucide-react'
 import { ClueZeroMark, ClueZeroWordmark } from '@/components/brand/logo'
 
 const FEATURES = [
@@ -142,7 +142,7 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-5">
             {error && (
               <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2.5 rounded-lg">
-                <CheckCircle2 className="size-4 shrink-0" />
+                <AlertCircle className="size-4 shrink-0" />
                 {error}
               </div>
             )}
