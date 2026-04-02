@@ -8,8 +8,8 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
 
-  const { workspaceId } = await req.json() as { workspaceId: string }
-  if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
+  const { workspaceId, connectionId } = await req.json() as { workspaceId: string; connectionId: string }
+  if (!workspaceId || !connectionId) return NextResponse.json({ error: 'workspaceId and connectionId required' }, { status: 400 })
 
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
   const { data: conn, error: connErr } = await admin
     .from('snowflake_connections')
     .select('*')
+    .eq('id', connectionId)
     .eq('workspace_id', workspaceId)
     .single()
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
   await admin
     .from('snowflake_connections')
     .update({ sync_status: 'syncing', updated_at: new Date().toISOString() })
-    .eq('workspace_id', workspaceId)
+    .eq('id', connectionId)
 
   const creds: SnowflakeCreds = {
     account:   conn.account,
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     await admin
       .from('snowflake_connections')
       .update({ sync_status: 'error', sync_error: fetchResult.error, updated_at: new Date().toISOString() })
-      .eq('workspace_id', workspaceId)
+      .eq('id', connectionId)
     return NextResponse.json({ error: fetchResult.error }, { status: 500 })
   }
 
@@ -130,8 +131,10 @@ export async function POST(req: NextRequest) {
       isoDate = isNaN(d.getTime()) ? String(rawDate) : d.toISOString().slice(0, 10)
     }
 
-    // Upsert ad
-    const adId = `sf_${r.brand}_${r.headline ?? 'unknown'}_${isoDate}`.replace(/\s+/g, '_').toLowerCase()
+    // Prefix ad_id with connection short-id so the same brand+headline+date
+    // from two different tables creates two separate ads (not a collision)
+    const connPrefix = connectionId.slice(0, 8)
+    const adId = `${connPrefix}_sf_${r.brand}_${r.headline ?? 'unknown'}_${isoDate}`.replace(/\s+/g, '_').toLowerCase()
     const { data: ad, error: adErr } = await admin
       .from('ads')
       .upsert(
@@ -146,6 +149,7 @@ export async function POST(req: NextRequest) {
           first_seen_at:     isoDate,
           last_seen_at:      isoDate,
           is_active:         true,
+          connection_id:     connectionId,
         },
         { onConflict: 'workspace_id,platform,ad_id' }
       )
@@ -212,7 +216,7 @@ export async function POST(req: NextRequest) {
       last_sync_rows: inserted,
       updated_at:     new Date().toISOString(),
     })
-    .eq('workspace_id', workspaceId)
+    .eq('id', connectionId)
 
   return NextResponse.json({ ok: true, fetched: rows.length, inserted, errors })
 }

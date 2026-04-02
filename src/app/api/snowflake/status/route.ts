@@ -5,11 +5,11 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
-  if (!workspaceId) return NextResponse.json({ connected: false })
+  if (!workspaceId) return NextResponse.json({ connections: [] })
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ connected: false })
+  if (!user) return NextResponse.json({ connections: [] })
 
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,16 +18,21 @@ export async function GET(req: NextRequest) {
 
   const { data } = await admin
     .from('snowflake_connections')
-    .select('last_synced_at, last_sync_rows, sync_status')
+    .select('id, connection_name, table_name, last_synced_at, last_sync_rows, sync_status, sync_error')
     .eq('workspace_id', workspaceId)
-    .single()
+    .order('created_at', { ascending: true })
 
-  if (!data) return NextResponse.json({ connected: false })
+  if (!data || data.length === 0) return NextResponse.json({ connections: [] })
 
   return NextResponse.json({
-    connected: true,
-    lastSync: data.last_synced_at,
-    recordCount: data.last_sync_rows,
-    syncStatus: data.sync_status,
+    connections: data.map(c => ({
+      id:             c.id,
+      name:           c.connection_name ?? c.table_name,
+      tableName:      c.table_name,
+      lastSync:       c.last_synced_at,
+      recordCount:    c.last_sync_rows,
+      syncStatus:     c.sync_status,
+      syncError:      c.sync_error,
+    })),
   })
 }

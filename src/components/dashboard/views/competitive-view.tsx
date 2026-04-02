@@ -27,24 +27,25 @@ function EmptyState({ label }: { label: string }) {
   return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">{label}</div>
 }
 
-interface Props { workspaceId?: string }
+interface Props { workspaceId?: string; connectionId?: string }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CompetitiveData = Record<string, any>
 
-export function CompetitiveView({ workspaceId }: Props) {
+export function CompetitiveView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<CompetitiveData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
 
   useEffect(() => {
     if (!workspaceId) return
     setLoading(true)
-    fetch(`/api/data/competitive?workspaceId=${workspaceId}`)
+    const src = connectionId ? `&connectionId=${connectionId}` : ''
+    fetch(`/api/data/competitive?workspaceId=${workspaceId}${src}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId])
+  }, [workspaceId, connectionId])
 
   if (loading) return (
     <div>

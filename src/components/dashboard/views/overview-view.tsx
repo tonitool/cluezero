@@ -31,24 +31,25 @@ function EmptyState({ label }: { label: string }) {
   )
 }
 
-interface Props { workspaceId?: string }
+interface Props { workspaceId?: string; connectionId?: string }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OverviewData = Record<string, any>
 
-export function OverviewView({ workspaceId }: Props) {
+export function OverviewView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
 
   useEffect(() => {
     if (!workspaceId) return
     setLoading(true)
-    fetch(`/api/data/overview?workspaceId=${workspaceId}`)
+    const src = connectionId ? `&connectionId=${connectionId}` : ''
+    fetch(`/api/data/overview?workspaceId=${workspaceId}${src}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId])
+  }, [workspaceId, connectionId])
 
   if (loading) return (
     <div>

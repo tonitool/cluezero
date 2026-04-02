@@ -3,8 +3,13 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
-  const { workspaceId } = await req.json() as { workspaceId: string }
-  if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
+  const { workspaceId, connectionId } = await req.json() as {
+    workspaceId: string
+    connectionId: string
+  }
+  if (!workspaceId || !connectionId) {
+    return NextResponse.json({ error: 'workspaceId and connectionId required' }, { status: 400 })
+  }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -23,6 +28,7 @@ export async function POST(req: NextRequest) {
   const { error } = await admin
     .from('snowflake_connections')
     .delete()
+    .eq('id', connectionId)
     .eq('workspace_id', workspaceId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

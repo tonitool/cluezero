@@ -42,23 +42,25 @@ interface MovementData {
 
 interface Props {
   workspaceId?: string
+  connectionId?: string
 }
 
-export function MovementView({ workspaceId }: Props) {
+export function MovementView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<MovementData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
 
   useEffect(() => {
     if (!workspaceId) return
     setLoading(true)
-    fetch(`/api/data/movement?workspaceId=${workspaceId}`)
+    const src = connectionId ? `&connectionId=${connectionId}` : ''
+    fetch(`/api/data/movement?workspaceId=${workspaceId}${src}`)
       .then(r => r.json())
       .then((d: MovementData) => {
         if (d.hasData) setData(d)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId])
+  }, [workspaceId, connectionId])
 
   if (loading) return (
     <div>

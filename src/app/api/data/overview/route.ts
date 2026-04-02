@@ -40,6 +40,7 @@ type BWData = { totalAds: number; newAds: number; spend: number; reach: number; 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
+  const connectionId = searchParams.get('connectionId')
   const ownBrandParam = (searchParams.get('brand') ?? 'orlen').toLowerCase().replace(/[\s\-_]/g, '')
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
@@ -57,13 +58,15 @@ export async function GET(req: NextRequest) {
     .eq('workspace_id', workspaceId).eq('user_id', user.id).single()
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: rows, error } = await admin
+  let adsQuery = admin
     .from('ads')
     .select(`id, first_seen_at, is_active, performance_index,
       tracked_brands ( name ),
       ad_spend_estimates ( week_start, est_spend_eur, est_reach )`)
     .eq('workspace_id', workspaceId)
     .eq('is_active', true)
+  if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
+  const { data: rows, error } = await adsQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false })
@@ -100,6 +103,9 @@ export async function GET(req: NextRequest) {
   const brands = Object.keys(byBrandWeek)
   const latestWeek = sortedWeeks[sortedWeeks.length - 1]
   const prevWeek = sortedWeeks[sortedWeeks.length - 2] ?? null
+
+  // Must be defined before performanceTrend which references it
+  const ownKey = brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b)) ?? brands[0] ?? 'orlen'
 
   const weeklySpendMovement = sortedWeeks.map(week => {
     const row: Record<string, unknown> = { week: formatWeek(week) }
@@ -153,8 +159,6 @@ export async function GET(req: NextRequest) {
     return { advertiser: brandNames[b] ?? b, platform: 'META', totalAds: w.totalAds, newAds: w.newAds, weeklyReach: w.reach, weeklySpend: Math.round(w.spend), avgPi }
   })
 
-  // Find own brand key from data (match by param)
-  const ownKey = brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b)) ?? brands[0] ?? 'orlen'
   const ownBrandLabel = brandNames[ownKey] ?? ownKey.toUpperCase()
 
   const latestTotalSpend = brands.reduce((s, b) => s + (byBrandWeek[b]?.[latestWeek]?.spend ?? 0), 0)

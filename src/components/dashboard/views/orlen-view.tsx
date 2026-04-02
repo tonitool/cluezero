@@ -52,12 +52,12 @@ function ScatterDot({ cx = 0, cy = 0, payload }: ScatterDotProps) {
   return <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
 }
 
-interface Props { workspaceId?: string; ownBrand?: string }
+interface Props { workspaceId?: string; ownBrand?: string; connectionId?: string }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OrlenData = Record<string, any>
 
-export function OrlenView({ workspaceId, ownBrand = 'ORLEN' }: Props) {
+export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Props) {
   const brandLabel = ownBrand || 'ORLEN'
   const [data, setData] = useState<OrlenData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
@@ -65,12 +65,13 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN' }: Props) {
   useEffect(() => {
     if (!workspaceId) return
     setLoading(true)
-    fetch(`/api/data/orlen?workspaceId=${workspaceId}&brand=${encodeURIComponent(brandLabel)}`)
+    const src = connectionId ? `&connectionId=${connectionId}` : ''
+    fetch(`/api/data/orlen?workspaceId=${workspaceId}&brand=${encodeURIComponent(brandLabel)}${src}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId, brandLabel])
+  }, [workspaceId, brandLabel, connectionId])
 
   if (loading) return (
     <div>

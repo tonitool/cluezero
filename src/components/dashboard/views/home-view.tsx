@@ -45,6 +45,7 @@ interface Props {
   workspaceId?: string
   ownBrand?: string
   onNavigate: (view: ViewId) => void
+  connectionId?: string
 }
 
 // ─── Auto-insights ────────────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidge
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate }: Props) {
+export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate, connectionId }: Props) {
   const [query, setQuery] = useState('')
   const [submitted, setSubmitted] = useState('')
   const [widgets, setWidgets] = useState<SmartWidget[]>([])
@@ -303,22 +304,23 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
   useEffect(() => {
     if (!workspaceId) return
     const brand = ownBrand ? `&brand=${encodeURIComponent(ownBrand)}` : ''
+    const src = connectionId ? `&connectionId=${connectionId}` : ''
     let overviewDone = false
     let performanceDone = false
     function checkDone() {
       if (overviewDone && performanceDone) setLoading(false)
     }
-    fetch(`/api/data/overview?workspaceId=${workspaceId}${brand}`)
+    fetch(`/api/data/overview?workspaceId=${workspaceId}${brand}${src}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setLiveData(d) })
       .catch(() => {})
       .finally(() => { overviewDone = true; checkDone() })
-    fetch(`/api/data/performance?workspaceId=${workspaceId}`)
+    fetch(`/api/data/performance?workspaceId=${workspaceId}${src}`)
       .then(r => r.json())
       .then(d => { if (d.hasData && d.topCreatives?.length) setLiveCreatives(d.topCreatives) })
       .catch(() => {})
       .finally(() => { performanceDone = true; checkDone() })
-  }, [workspaceId, ownBrand])
+  }, [workspaceId, ownBrand, connectionId])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'

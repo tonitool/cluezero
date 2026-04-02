@@ -5,6 +5,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
+  const connectionId = searchParams.get('connectionId')
 
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Query ads + spend estimates + brand names directly (bypass weekly_metrics)
-  const { data: rows, error } = await admin
+  let adsQuery = admin
     .from('ads')
     .select(`
       id,
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest) {
     `)
     .eq('workspace_id', workspaceId)
     .eq('is_active', true)
+  if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
+  const { data: rows, error } = await adsQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false, metrics: [] })

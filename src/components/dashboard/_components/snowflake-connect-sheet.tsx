@@ -61,6 +61,7 @@ function SnowflakeLogo({ className }: { className?: string }) {
 type Step = 'credentials' | 'mapping' | 'success'
 
 type Credentials = {
+  connectionName: string
   account: string
   username: string
   password: string
@@ -116,14 +117,15 @@ function autoFillMapping(columns: string[], currentMapping: Mapping): Mapping {
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConnected: () => void
+  onConnected: (connectionId: string, connectionName: string) => void
   workspaceId?: string
+  editingConnectionId?: string   // when set, editing an existing connection
 }
 
-export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspaceId }: Props) {
+export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspaceId, editingConnectionId }: Props) {
   const [step, setStep] = useState<Step>('credentials')
   const [creds, setCreds] = useState<Credentials>({
-    account: '', username: '', password: '', role: '',
+    connectionName: '', account: '', username: '', password: '', role: '',
     warehouse: '', database: '', schema: '', table: '',
   })
   const [mapping, setMapping] = useState<Mapping>({
@@ -138,7 +140,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
 
   function resetSheet() {
     setStep('credentials')
-    setCreds({ account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '', table: '' })
+    setCreds({ connectionName: '', account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '', table: '' })
     setMapping({ brandCol: '', dateCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '' })
     setDetecting(false)
     setDetectError(null)
@@ -152,6 +154,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
   }
 
   const credsValid =
+    creds.connectionName.trim() &&
     creds.account.trim() &&
     creds.username.trim() &&
     creds.password.trim() &&
@@ -206,11 +209,13 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     setSaving(true)
     try {
       if (workspaceId) {
-        await fetch('/api/snowflake/save', {
+        const res = await fetch('/api/snowflake/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspaceId,
+            connectionId:   editingConnectionId,
+            connectionName: creds.connectionName,
             creds: {
               account:   creds.account,
               username:  creds.username,
@@ -234,9 +239,10 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             },
           }),
         })
+        const data = await res.json()
+        setStep('success')
+        onConnected(data.connectionId ?? editingConnectionId ?? '', creds.connectionName)
       }
-      setStep('success')
-      onConnected()
     } finally {
       setSaving(false)
     }
@@ -300,6 +306,18 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
               <p className="text-xs text-muted-foreground">
                 Enter your Snowflake account details and the table to read. Credentials are encrypted at rest.
               </p>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="sf-conn-name" className="text-xs">Connection name <span className="text-rose-500">*</span></Label>
+                <Input
+                  id="sf-conn-name"
+                  placeholder="e.g. Germany, Poland, Q1 2026"
+                  className="h-8 text-sm"
+                  value={creds.connectionName}
+                  onChange={e => setCreds(p => ({ ...p, connectionName: e.target.value }))}
+                />
+                <p className="text-[11px] text-muted-foreground">Used to identify this source in the dashboard filter.</p>
+              </div>
 
               <fieldset className="flex flex-col gap-4">
                 <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Account</legend>
@@ -481,6 +499,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
                 </p>
               </div>
               <div className="w-full bg-zinc-50 border border-border rounded-lg p-4 text-left flex flex-col gap-2">
+                <SummaryRow label="Name" value={creds.connectionName} />
                 <SummaryRow label="Account" value={creds.account} />
                 <SummaryRow label="Table" value={`${creds.database}.${creds.schema}.${creds.table}`} />
                 <SummaryRow label="Brand column" value={mapping.brandCol} />

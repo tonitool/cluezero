@@ -43,6 +43,7 @@ function isNewAd(firstSeenAt: string, weekStart: string): boolean {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
+  const connectionId = searchParams.get('connectionId')
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const supabase = await createClient()
@@ -59,12 +60,14 @@ export async function GET(req: NextRequest) {
     .eq('workspace_id', workspaceId).eq('user_id', user.id).single()
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { data: rows, error } = await admin
+  let adsQuery = admin
     .from('ads')
     .select(`id, first_seen_at, is_active, performance_index, topic, platform,
       tracked_brands ( name )`)
     .eq('workspace_id', workspaceId)
     .eq('is_active', true)
+  if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
+  const { data: rows, error } = await adsQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false })

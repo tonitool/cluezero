@@ -10,11 +10,13 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     workspaceId: string
+    connectionId?: string   // present when editing an existing connection
+    connectionName?: string // human label, e.g. "Germany"
     creds: SnowflakeCreds
     mapping: SnowflakeMapping
   }
 
-  const { workspaceId, creds, mapping } = body
+  const { workspaceId, connectionId, connectionName, creds, mapping } = body
 
   if (!workspaceId || !creds || !mapping) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -25,7 +27,6 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Verify the user is a member of this workspace
   const { data: membership } = await admin
     .from('workspace_members')
     .select('role')
@@ -33,38 +34,56 @@ export async function POST(req: NextRequest) {
     .eq('user_id', user.id)
     .single()
 
-  if (!membership) {
-    return NextResponse.json({ error: 'Not a workspace member' }, { status: 403 })
+  if (!membership) return NextResponse.json({ error: 'Not a workspace member' }, { status: 403 })
+
+  const payload = {
+    workspace_id:    workspaceId,
+    connection_name: connectionName ?? null,
+    account:         creds.account,
+    username:        creds.username,
+    password:        creds.password,
+    role:            creds.role ?? null,
+    warehouse:       creds.warehouse,
+    database:        creds.database,
+    schema:          creds.schema,
+    table_name:      mapping.table,
+    col_brand:       mapping.colBrand,
+    col_date:        mapping.colDate,
+    col_headline:    mapping.colHeadline ?? null,
+    col_spend:       mapping.colSpend ?? null,
+    col_impressions: mapping.colImpressions ?? null,
+    col_reach:       mapping.colReach ?? null,
+    col_pi:          mapping.colPi ?? null,
+    col_funnel:      mapping.colFunnel ?? null,
+    col_topic:       mapping.colTopic ?? null,
+    sync_status:     'idle',
+    updated_at:      new Date().toISOString(),
   }
 
-  const { error } = await admin
-    .from('snowflake_connections')
-    .upsert({
-      workspace_id:    workspaceId,
-      account:         creds.account,
-      username:        creds.username,
-      password:        creds.password,
-      role:            creds.role ?? null,
-      warehouse:       creds.warehouse,
-      database:        creds.database,
-      schema:          creds.schema,
-      table_name:      mapping.table,
-      col_brand:       mapping.colBrand,
-      col_date:        mapping.colDate,
-      col_headline:    mapping.colHeadline ?? null,
-      col_spend:       mapping.colSpend ?? null,
-      col_impressions: mapping.colImpressions ?? null,
-      col_reach:       mapping.colReach ?? null,
-      col_pi:          mapping.colPi ?? null,
-      col_funnel:      mapping.colFunnel ?? null,
-      col_topic:       mapping.colTopic ?? null,
-      sync_status:     'idle',
-      updated_at:      new Date().toISOString(),
-    }, { onConflict: 'workspace_id' })
+  let error: { message: string } | null = null
+  let savedId: string | null = null
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (connectionId) {
+    // Update existing connection
+    const { error: err } = await admin
+      .from('snowflake_connections')
+      .update(payload)
+      .eq('id', connectionId)
+      .eq('workspace_id', workspaceId)
+    error = err
+    savedId = connectionId
+  } else {
+    // Insert new connection
+    const { data: inserted, error: err } = await admin
+      .from('snowflake_connections')
+      .insert(payload)
+      .select('id')
+      .single()
+    error = err
+    savedId = inserted?.id ?? null
   }
 
-  return NextResponse.json({ ok: true })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true, connectionId: savedId })
 }

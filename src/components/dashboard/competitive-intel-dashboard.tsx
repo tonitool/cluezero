@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Home,
   LayoutDashboard,
@@ -131,11 +131,30 @@ interface Props {
   ownBrand?: string
 }
 
+interface SnowflakeSource {
+  id: string
+  name: string
+}
+
 export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspaceSlug, ownBrand = '' }: Props) {
   const [view, setView] = useState<ViewId>('home')
   const [week, setWeek] = useState('w14')
+  const [sources, setSources] = useState<SnowflakeSource[]>([])
+  const [connectionId, setConnectionId] = useState<string>('all')
   const router = useRouter()
   const supabase = createClient()
+
+  useEffect(() => {
+    if (!workspaceId) return
+    fetch(`/api/snowflake/status?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d.connections) && d.connections.length > 0) {
+          setSources(d.connections.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))
+        }
+      })
+      .catch(() => {})
+  }, [workspaceId])
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -231,6 +250,19 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
             <span className="font-medium text-foreground">{activeItem.label}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {showWeekSelector && sources.length > 1 && (
+              <Select value={connectionId} onValueChange={setConnectionId}>
+                <SelectTrigger className="h-8 w-[160px] text-xs border-border bg-white">
+                  <SelectValue placeholder="All sources" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">All sources</SelectItem>
+                  {sources.map(s => (
+                    <SelectItem key={s.id} value={s.id} className="text-xs">{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {showWeekSelector && (
               <Select value={week} onValueChange={setWeek}>
                 <SelectTrigger className="h-8 w-[180px] text-xs border-border bg-white">
@@ -257,12 +289,12 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
         </header>
 
         <main className="p-6">
-          {view === 'home'             && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={setView} />}
-          {view === 'overview'         && <OverviewView workspaceId={workspaceId} />}
-          {view === 'movement'         && <MovementView workspaceId={workspaceId} />}
-          {view === 'competitive'      && <CompetitiveView workspaceId={workspaceId} />}
-          {view === 'performance'      && <PerformanceView workspaceId={workspaceId} />}
-          {view === 'orlen'            && <OrlenView workspaceId={workspaceId} ownBrand={ownBrand} />}
+          {view === 'home'             && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={setView} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+          {view === 'overview'         && <OverviewView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+          {view === 'movement'         && <MovementView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+          {view === 'competitive'      && <CompetitiveView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+          {view === 'performance'      && <PerformanceView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+          {view === 'orlen'            && <OrlenView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
           {view === 'ai'               && <AiInsightsView />}
           {view === 'creative-library' && <CreativeLibraryView />}
           {view === 'strategy'         && <StrategyView />}
