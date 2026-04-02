@@ -57,7 +57,14 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/dashboard')
+    // Look up the user's workspace and go there directly
+    const res = await fetch('/api/workspace/mine')
+    const data = await res.json()
+    if (data.slug) {
+      router.push(`/dashboard/${data.slug}`)
+    } else {
+      router.push('/dashboard')
+    }
     router.refresh()
   }
 
