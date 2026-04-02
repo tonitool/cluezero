@@ -15,14 +15,20 @@ export default async function DashboardRedirect() {
 
   const { data: membership } = await admin
     .from('workspace_members')
-    .select('workspaces(slug)')
+    .select('workspace_id')
     .eq('user_id', user.id)
     .limit(1)
     .single()
 
-  const slug = (membership?.workspaces as { slug: string } | null)?.slug
+  if (membership?.workspace_id) {
+    const { data: workspace } = await admin
+      .from('workspaces')
+      .select('slug')
+      .eq('id', membership.workspace_id)
+      .single()
 
-  if (slug) redirect(`/dashboard/${slug}`)
+    if (workspace?.slug) redirect(`/dashboard/${workspace.slug}`)
+  }
 
   // No workspace yet
   redirect('/signup')
