@@ -16,6 +16,7 @@ import {
   Download,
   ChevronRight,
   Brain,
+  Bot,
   LogOut,
   CircleUser,
   TrendingUp,
@@ -62,13 +63,16 @@ import { CreativeLibraryView } from './views/creative-library-view'
 import { AlertsView }          from './views/alerts-view'
 import { ConnectionsView }     from './views/connections-view'
 import { SetupView }           from './views/setup-view'
-import { StrategyView }        from './views/strategy-view'
-import { AccountView }         from './views/account-view'
+import { StrategyView }          from './views/strategy-view'
+import { AccountView }            from './views/account-view'
+import { AgentsView }             from './views/agents-view'
+import { PerformanceAgentView }   from './views/performance-agent-view'
 
 type ViewId =
   | 'home'
   | 'overview' | 'movement' | 'competitive' | 'performance' | 'orlen'
   | 'ai' | 'creative-library' | 'strategy'
+  | 'agents' | 'agent-performance'
   | 'alerts'
   | 'connections' | 'setup' | 'account'
 
@@ -95,6 +99,13 @@ const NAV_GROUPS = [
       { id: 'ai'               as ViewId, label: 'AI Insights',              icon: MessageSquare },
       { id: 'creative-library' as ViewId, label: 'Creative Library',         icon: ImageIcon },
       { id: 'strategy'         as ViewId, label: 'Strategy Intelligence',    icon: Brain },
+    ],
+  },
+  {
+    label: 'Agents',
+    items: [
+      { id: 'agents'           as ViewId, label: 'Agent Hub',                 icon: Bot },
+      { id: 'agent-performance' as ViewId, label: 'Performance Manager',      icon: TrendingUp },
     ],
   },
   {
@@ -136,7 +147,7 @@ function generateWeeks(n = 4): { value: string; label: string }[] {
 const weeks = generateWeeks(4)
 
 // Views that don't need the week selector
-const WORKSPACE_VIEWS: ViewId[] = ['home', 'connections', 'setup', 'alerts', 'account']
+const WORKSPACE_VIEWS: ViewId[] = ['home', 'connections', 'setup', 'alerts', 'account', 'agents', 'agent-performance']
 
 interface Props {
   workspaceId: string
@@ -311,7 +322,9 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
           {view === 'orlen'            && <OrlenView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
           {view === 'ai'               && <AiInsightsView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
           {view === 'creative-library' && <CreativeLibraryView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} onNavigate={(v) => setView(v as ViewId)} />}
-          {view === 'strategy'         && <StrategyView workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={(v) => setView(v as ViewId)} />}
+          {view === 'strategy'          && <StrategyView workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={(v) => setView(v as ViewId)} />}
+          {view === 'agents'           && <AgentsView onNavigate={(v) => setView(v as ViewId)} />}
+          {view === 'agent-performance' && <PerformanceAgentView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} onBack={() => setView('agents')} />}
           {view === 'alerts'           && <AlertsView workspaceId={workspaceId} />}
           {view === 'connections'      && <ConnectionsView workspaceId={workspaceId} />}
           {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
