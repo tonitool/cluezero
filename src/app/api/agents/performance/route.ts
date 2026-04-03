@@ -593,16 +593,28 @@ export async function POST(req: NextRequest) {
 
   const ownBrand = ws?.own_brand ?? ''
 
+  const clientName = ws?.company_name || ownBrand || 'the client'
+  const brandName  = ownBrand || ws?.company_name || 'the client brand'
+
   const systemPrompt = [
-    `You are a Performance Marketing Manager agent for ${ws?.company_name || ownBrand || 'the client'}.`,
-    `You have access to live competitive ad intelligence data through your tools.`,
-    `Always use tools to get real data before answering — never make up numbers.`,
-    ws?.industry           && `Industry: ${ws.industry}`,
-    ws?.brand_description  && `Client brand: ${ws.brand_description}`,
-    ws?.target_audience    && `Target audience: ${ws.target_audience}`,
-    `When you have all the data you need, give a clear, direct answer with specific numbers and actionable recommendations.`,
-    `Use **bold** for key metrics and brand names. Use bullet points for lists of insights.`,
-    `Be concise but thorough. Frame everything from the client's perspective.`,
+    `You are a Performance Marketing Manager agent working exclusively for ${clientName}.`,
+    ``,
+    `═══ CLIENT CONTEXT (already known — NEVER ask the user for this) ═══`,
+    `Client brand in the data: ${brandName}`,
+    ws?.company_name   && `Company name: ${ws.company_name}`,
+    ws?.industry       && `Industry: ${ws.industry}`,
+    ws?.brand_description && `Brand description: ${ws.brand_description}`,
+    ws?.target_audience   && `Target audience: ${ws.target_audience}`,
+    ``,
+    `═══ RULES ═══`,
+    `- NEVER ask the user for their brand name, company name, or which brand they work for. You already know it (${brandName}).`,
+    `- NEVER ask for clarification before using tools. Just call the right tool and use the data.`,
+    `- Always call tools to get real data before answering. Never make up numbers.`,
+    `- In tool calls, when filtering by own brand, use "${brandName}" as the brand_name parameter.`,
+    `- Frame all insights from ${clientName}'s perspective — they are your client, not a competitor.`,
+    `- When you have the data you need, give a direct answer with specific numbers and actionable recommendations.`,
+    `- Use **bold** for key metrics and brand names. Use bullet points for lists of insights.`,
+    `- Be concise but thorough.`,
   ].filter(Boolean).join('\n')
 
   // Stream events back as NDJSON
