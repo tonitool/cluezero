@@ -255,7 +255,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
                 id="ws-own-brand"
                 value={wsOwnBrand}
                 onChange={e => setWsOwnBrand(e.target.value)}
-                placeholder="e.g. ORLEN"
+                placeholder="e.g. Apple, Nike, Volkswagen"
                 className="h-8 text-sm"
               />
               <p className="text-[11px] text-muted-foreground">Used in charts and the Brand Deep Dive view.</p>
@@ -267,7 +267,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
                 id="company-name"
                 value={companyName}
                 onChange={e => setCompanyName(e.target.value)}
-                placeholder="e.g. Orlen S.A."
+                placeholder="e.g. Acme Corp, Apple Inc."
                 className="h-8 text-sm"
               />
             </div>
@@ -289,7 +289,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
                 id="website"
                 value={website}
                 onChange={e => setWebsite(e.target.value)}
-                placeholder="e.g. https://orlen.pl"
+                placeholder="e.g. https://yourcompany.com"
                 className="h-8 text-sm"
               />
             </div>
@@ -300,7 +300,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
                 id="target-audience"
                 value={targetAudience}
                 onChange={e => setTargetAudience(e.target.value)}
-                placeholder="e.g. Polish drivers, fleet operators, families"
+                placeholder="e.g. 25–45 year-old drivers, SME decision-makers, families"
                 className="h-8 text-sm"
               />
             </div>
@@ -311,7 +311,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
                 id="brand-description"
                 value={brandDescription}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBrandDescription(e.target.value)}
-                placeholder="e.g. Poland's largest petrol company. Known for the VITAY loyalty programme, EV charging network, and premium fuels. Expanding across Central Europe."
+                placeholder="e.g. A leading consumer brand known for quality and innovation. Competing on loyalty, convenience, and sustainability."
                 className="text-sm resize-none min-h-[72px]"
                 rows={3}
               />

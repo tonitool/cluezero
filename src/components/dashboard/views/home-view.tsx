@@ -169,7 +169,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
 
   const kpiMetrics = liveData?.executiveMetrics ?? []
   const spendChartData = liveData?.weeklySpendMovement ?? []
-  const brandLabel = ownBrand || 'ORLEN'
+  const brandLabel = ownBrand || 'Your Brand'
 
   function handleSubmit(q: string) {
     if (!q.trim()) return
@@ -228,7 +228,15 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{greeting}, {workspaceName}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Week of 30 Mar – 05 Apr 2026 · 2 of 4 sources synced</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{(() => {
+            const now = new Date()
+            const day = now.getUTCDay()
+            const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1)
+            const mon = new Date(now); mon.setUTCDate(diff)
+            const sun = new Date(mon); sun.setUTCDate(mon.getUTCDate() + 6)
+            const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+            return `Week of ${fmt(mon)} – ${fmt(sun)}`
+          })()}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
@@ -253,7 +261,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSubmit(query)}
-              placeholder="e.g. Shell spend on Meta, top creative performance, ORLEN whitespace…"
+              placeholder="e.g. Who is spending the most? Top creative performance, whitespace opportunities…"
               className="w-full h-11 pl-10 pr-4 bg-white/10 border border-white/20 rounded-lg text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:bg-white/15"
             />
           </div>
@@ -440,7 +448,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
           </p>
           <div className="space-y-1.5 mb-4">
             {[
-              'Why did ORLEN\'s share drop?',
+              `Why did ${brandLabel}'s share drop?`,
               'Which competitor is growing fastest?',
               'What\'s the top creative this week?',
             ].map(q => (

@@ -9,6 +9,7 @@ import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { FUNNEL_COLORS } from '@/components/dashboard/_components/constants'
+import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT } from '@/components/dashboard/_components/chart-theme'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 
@@ -91,10 +92,10 @@ export function PerformanceView({ workspaceId, connectionId }: Props) {
           {funnelDistribution.length === 0 ? <EmptyState label="No funnel data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnelDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 52 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="stage" tick={{ fontSize: 11 }} width={48} />
-                <Tooltip />
+                <CartesianGrid {...GRID_H} />
+                <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="stage" tick={TICK} tickLine={false} axisLine={false} width={48} />
+                <Tooltip content={(p) => <ChartTooltip {...p} />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {funnelDistribution.map((entry: { stage: string }) => (
                     <Cell key={`cell-${entry.stage}`} fill={FUNNEL_COLORS[entry.stage as keyof typeof FUNNEL_COLORS] ?? '#94A3B8'} />
@@ -109,15 +110,15 @@ export function PerformanceView({ workspaceId, connectionId }: Props) {
           {funnelByAdvertiser.length === 0 ? <EmptyState label="No funnel data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnelByAdvertiser} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 64 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} width={60} />
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="see" name="See" stackId="a" fill={FUNNEL_COLORS.See} />
+                <CartesianGrid {...GRID_H} />
+                <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={60} />
+                <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                <Bar dataKey="see"   name="See"   stackId="a" fill={FUNNEL_COLORS.See} />
                 <Bar dataKey="think" name="Think" stackId="a" fill={FUNNEL_COLORS.Think} />
-                <Bar dataKey="doo" name="Do" stackId="a" fill={FUNNEL_COLORS.Do} />
-                <Bar dataKey="care" name="Care" stackId="a" fill={FUNNEL_COLORS.Care} radius={[0, 4, 4, 0]} />
+                <Bar dataKey="doo"   name="Do"    stackId="a" fill={FUNNEL_COLORS.Do} />
+                <Bar dataKey="care"  name="Care"  stackId="a" fill={FUNNEL_COLORS.Care} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -128,15 +129,15 @@ export function PerformanceView({ workspaceId, connectionId }: Props) {
         {newAdsByFunnel.length === 0 ? <EmptyState label="No funnel data" /> : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={newAdsByFunnel} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="see" name="See" stroke={FUNNEL_COLORS.See} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="think" name="Think" stroke={FUNNEL_COLORS.Think} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="doo" name="Do" stroke={FUNNEL_COLORS.Do} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="care" name="Care" stroke={FUNNEL_COLORS.Care} strokeWidth={2} dot={false} />
+              <CartesianGrid {...GRID} />
+              <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+              <YAxis tick={TICK} tickLine={false} axisLine={false} />
+              <Tooltip content={(p) => <ChartTooltip {...p} />} />
+              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+              <Line type="monotone" dataKey="see"   name="See"   stroke={FUNNEL_COLORS.See}   strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+              <Line type="monotone" dataKey="think" name="Think" stroke={FUNNEL_COLORS.Think} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+              <Line type="monotone" dataKey="doo"   name="Do"    stroke={FUNNEL_COLORS.Do}    strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+              <Line type="monotone" dataKey="care"  name="Care"  stroke={FUNNEL_COLORS.Care}  strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -164,7 +165,7 @@ export function PerformanceView({ workspaceId, connectionId }: Props) {
             const brandInitial = creative.brand.charAt(0).toUpperCase()
 
             return (
-              <div key={creative.id} className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+              <div key={creative.id} className="bg-white rounded-xl border border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                 <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
                   {creative.thumbnail ? (
                     <img

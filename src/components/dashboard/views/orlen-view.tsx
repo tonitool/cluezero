@@ -8,6 +8,7 @@ import {
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { TICK, GRID } from '@/components/dashboard/_components/chart-theme'
 import { Badge } from '@/components/ui/badge'
 
 const STRATEGY_COLORS = {
@@ -144,9 +145,9 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
             ) : (
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" dataKey="activity" name="Activity" label={{ value: 'Avg PI', position: 'insideBottom', offset: -2, fontSize: 11 }} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis type="number" dataKey="presence" name="Total Ads" label={{ value: 'Total Ads', angle: -90, position: 'insideLeft', offset: 8, fontSize: 11 }} tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <CartesianGrid {...GRID} />
+                <XAxis type="number" dataKey="activity" name="Activity" label={{ value: 'Avg PI', position: 'insideBottom', offset: -2, fontSize: 11, fill: '#71717a' }} tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis type="number" dataKey="presence" name="Total Ads" label={{ value: 'Total Ads', angle: -90, position: 'insideLeft', offset: 8, fontSize: 11, fill: '#71717a' }} tick={TICK} tickLine={false} axisLine={false} />
                 <ZAxis type="number" dataKey="reach" range={[60, 200]} name="Reach (k)" />
                 <Tooltip
                   cursor={{ strokeDasharray: '3 3' }}
@@ -154,11 +155,13 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
                     if (!active || !payload?.length) return null
                     const d = payload[0].payload
                     return (
-                      <div className="bg-white rounded-lg border border-border shadow-sm p-2 text-xs">
-                        <p className="font-semibold mb-1">{d.advertiser}</p>
-                        <p>Avg PI: {d.activity}</p>
-                        <p>Total Ads: {d.presence}</p>
-                        <p>Reach: {d.reach}k</p>
+                      <div className="rounded-xl bg-zinc-900/95 border border-zinc-700/50 px-3 py-2.5 shadow-2xl text-xs min-w-[130px] pointer-events-none">
+                        <p className="text-white font-semibold pb-1.5 mb-2 border-b border-zinc-800">{d.advertiser}</p>
+                        <div className="space-y-1">
+                          <p className="text-zinc-300">Avg PI: <span className="text-white font-semibold">{d.activity}</span></p>
+                          <p className="text-zinc-300">Total Ads: <span className="text-white font-semibold">{d.presence}</span></p>
+                          <p className="text-zinc-300">Reach: <span className="text-white font-semibold">{d.reach}k</span></p>
+                        </div>
                       </div>
                     )
                   }}

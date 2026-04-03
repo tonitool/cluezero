@@ -12,7 +12,7 @@ interface ChartCardProps {
 
 export function ChartCard({ title, description, children, className, height = 300, action }: ChartCardProps) {
   return (
-    <div className={cn('bg-white rounded-lg border border-border shadow-sm flex flex-col', className)}>
+    <div className={cn('bg-white rounded-xl border border-border shadow-sm flex flex-col transition-shadow hover:shadow-md', className)}>
       <div className="flex items-start justify-between px-5 pt-5 pb-3 gap-4">
         <div>
           <p className="text-sm font-semibold leading-tight">{title}</p>

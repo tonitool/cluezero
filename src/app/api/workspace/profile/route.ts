@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const { data: ws } = await admin
     .from('workspaces')
-    .select('name, slug, own_brand, company_name, industry, website, brand_description, target_audience, ai_context')
+    .select('name, slug, own_brand, company_name, industry, website, brand_description, target_audience, ai_context, strategy_context')
     .eq('id', workspaceId)
     .single()
 
@@ -42,5 +42,6 @@ export async function GET(req: NextRequest) {
     brandDescription:  ws.brand_description  ?? '',
     targetAudience:    ws.target_audience    ?? '',
     aiContext:         ws.ai_context         ?? '',
+    strategyContext:   ws.strategy_context   ?? null,
   })
 }

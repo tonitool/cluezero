@@ -115,11 +115,25 @@ const NAV_GROUPS = [
 
 const ALL_ITEMS = NAV_GROUPS.flatMap(g => g.items)
 
-const weeks = [
-  { value: 'w14', label: '30.03 – 05.04.2026' },
-  { value: 'w13', label: '23.03 – 29.03.2026' },
-  { value: 'w12', label: '16.03 – 22.03.2026' },
-]
+function generateWeeks(n = 4): { value: string; label: string }[] {
+  const result = []
+  const now = new Date()
+  const day = now.getUTCDay()
+  const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1)
+  const monday = new Date(now)
+  monday.setUTCDate(diff)
+  for (let i = 0; i < n; i++) {
+    const mon = new Date(monday)
+    mon.setUTCDate(monday.getUTCDate() - i * 7)
+    const sun = new Date(mon)
+    sun.setUTCDate(mon.getUTCDate() + 6)
+    const fmt = (d: Date) => `${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}`
+    result.push({ value: `w${i}`, label: `${fmt(mon)} – ${fmt(sun)}.${sun.getUTCFullYear()}` })
+  }
+  return result
+}
+
+const weeks = generateWeeks(4)
 
 // Views that don't need the week selector
 const WORKSPACE_VIEWS: ViewId[] = ['home', 'connections', 'setup', 'alerts', 'account']
@@ -138,7 +152,7 @@ interface SnowflakeSource {
 
 export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspaceSlug, ownBrand = '' }: Props) {
   const [view, setView] = useState<ViewId>('home')
-  const [week, setWeek] = useState('w14')
+  const [week, setWeek] = useState('w0')
   const [sources, setSources] = useState<SnowflakeSource[]>([])
   const [connectionId, setConnectionId] = useState<string>('all')
   const router = useRouter()
@@ -296,8 +310,8 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
           {view === 'performance'      && <PerformanceView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
           {view === 'orlen'            && <OrlenView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
           {view === 'ai'               && <AiInsightsView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
-          {view === 'creative-library' && <CreativeLibraryView />}
-          {view === 'strategy'         && <StrategyView />}
+          {view === 'creative-library' && <CreativeLibraryView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} onNavigate={(v) => setView(v as ViewId)} />}
+          {view === 'strategy'         && <StrategyView workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={(v) => setView(v as ViewId)} />}
           {view === 'alerts'           && <AlertsView workspaceId={workspaceId} />}
           {view === 'connections'      && <ConnectionsView workspaceId={workspaceId} />}
           {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}

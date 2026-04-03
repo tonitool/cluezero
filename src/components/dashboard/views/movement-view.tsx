@@ -17,6 +17,7 @@ import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 import {
   Table,
   TableBody,
@@ -136,11 +137,11 @@ export function MovementView({ workspaceId, connectionId }: Props) {
             {newVsExisting.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={newVsExisting} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
-                  <Tooltip formatter={(value: unknown) => [`${value}%`, undefined] as [string, undefined]} />
-                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID_H} />
+                  <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={64} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   <Bar dataKey="newAdsPct" name="New" stackId="a" fill="#6366F1" />
                   <Bar dataKey="existingAdsPct" name="Existing" stackId="a" fill="#E2E8F0" radius={[0, 3, 3, 0]} />
                 </BarChart>
@@ -154,11 +155,11 @@ export function MovementView({ workspaceId, connectionId }: Props) {
             {newAdsTrendData.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={newAdsTrendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {brandKeys.map((key) => (
                     <Line
                       key={key}
@@ -166,8 +167,9 @@ export function MovementView({ workspaceId, connectionId }: Props) {
                       dataKey={key}
                       name={key.charAt(0).toUpperCase() + key.slice(1)}
                       stroke={BRAND_COLORS[key as keyof typeof BRAND_COLORS] ?? '#94A3B8'}
-                      strokeWidth={2}
+                      strokeWidth={2.5}
                       dot={false}
+                      activeDot={ACTIVE_DOT}
                     />
                   ))}
                 </LineChart>
@@ -184,20 +186,20 @@ export function MovementView({ workspaceId, connectionId }: Props) {
             {performanceTrend.length === 0 ? <EmptyState label="No PI data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={performanceTrend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={BRAND_COLORS.orlen} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={BRAND_COLORS.orlen} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                  <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </div>
         </ChartCard>
 
-        <div className="bg-white rounded-lg border border-border shadow-sm p-5">
+        <div className="bg-white rounded-xl border border-border shadow-sm p-5 transition-shadow hover:shadow-md">
           <p className="text-sm font-semibold leading-tight mb-4">Weekly Movement Details</p>
           {tableData.length === 0 ? (
             <p className="text-xs text-muted-foreground">No data available.</p>
