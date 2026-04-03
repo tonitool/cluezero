@@ -75,12 +75,13 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
     fetch(`/api/workspace/profile?workspaceId=${workspaceId}`)
       .then(r => r.json())
       .then(d => {
-        if (d.companyName      !== undefined) setCompanyName(d.companyName)
-        if (d.industry         !== undefined) setIndustry(d.industry)
-        if (d.website          !== undefined) setWebsite(d.website)
-        if (d.brandDescription !== undefined) setBrandDescription(d.brandDescription)
-        if (d.targetAudience   !== undefined) setTargetAudience(d.targetAudience)
-        if (d.aiContext        !== undefined) setAiContext(d.aiContext)
+        if (d.ownBrand          !== undefined) setWsOwnBrand(d.ownBrand)
+        if (d.companyName       !== undefined) setCompanyName(d.companyName)
+        if (d.industry          !== undefined) setIndustry(d.industry)
+        if (d.website           !== undefined) setWebsite(d.website)
+        if (d.brandDescription  !== undefined) setBrandDescription(d.brandDescription)
+        if (d.targetAudience    !== undefined) setTargetAudience(d.targetAudience)
+        if (d.aiContext         !== undefined) setAiContext(d.aiContext)
         setProfileLoaded(true)
       })
       .catch(() => setProfileLoaded(true))
@@ -96,6 +97,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
         workspaceId,
         name: wsName,
         slug: wsSlug,
+        ownBrand: wsOwnBrand,
         companyName,
         industry,
         website,
@@ -126,7 +128,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
     const res = await fetch('/api/workspace/update', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId, name: wsName, slug: wsSlug, ownBrand: wsOwnBrand }),
+      body: JSON.stringify({ workspaceId, name: wsName, slug: wsSlug }),
     })
     const data = await res.json()
     setSavingWs(false)
@@ -141,7 +143,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
     }
   }
 
-  const wsChanged = wsName !== workspaceName || wsSlug !== workspaceSlug || wsOwnBrand !== initialOwnBrand
+  const wsChanged = wsName !== workspaceName || wsSlug !== workspaceSlug
 
   function toggleBrand(id: string) {
     setBrands(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b))
@@ -174,10 +176,10 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
         </Button>
       </SectionHeader>
 
-      {/* Workspace details */}
+      {/* Workspace details — name + slug only */}
       <div className="bg-white rounded-lg border border-border shadow-sm p-5 mb-4 max-w-lg">
-        <p className="text-sm font-semibold mb-0.5">Workspace Details</p>
-        <p className="text-xs text-muted-foreground mb-4">Change your workspace name or URL slug.</p>
+        <p className="text-sm font-semibold mb-0.5">Workspace</p>
+        <p className="text-xs text-muted-foreground mb-4">Internal workspace name and URL.</p>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
@@ -188,17 +190,6 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
               onChange={e => handleNameChange(e.target.value)}
               className="h-8 text-sm"
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ws-own-brand" className="text-xs">Your brand name</Label>
-            <Input
-              id="ws-own-brand"
-              value={wsOwnBrand}
-              onChange={e => setWsOwnBrand(e.target.value)}
-              placeholder="e.g. ORLEN"
-              className="h-8 text-sm"
-            />
-            <p className="text-[11px] text-muted-foreground">Used in the Brand Deep Dive view to show your brand vs market.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="ws-slug" className="text-xs">URL slug</Label>
@@ -241,14 +232,14 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
         </div>
       </div>
 
-      {/* ── AI Intelligence Profile ── */}
+      {/* ── Brand & AI Profile ── */}
       <div className="bg-white rounded-lg border border-border shadow-sm p-5 mb-4">
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="size-4 text-zinc-400" />
-          <p className="text-sm font-semibold">AI Intelligence Profile</p>
+          <p className="text-sm font-semibold">Brand &amp; AI Profile</p>
         </div>
         <p className="text-xs text-muted-foreground mb-5">
-          Tell Claude who you are. This context is injected into every AI conversation so responses are grounded in your brand, market, and objectives — not generic assumptions.
+          Define your brand once. Used across charts, the Brand Deep Dive view, and injected into every AI conversation so Claude always knows who it&apos;s working for.
         </p>
 
         {!profileLoaded ? (
@@ -259,7 +250,19 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="company-name" className="text-xs">Company name <span className="text-muted-foreground font-normal">(official)</span></Label>
+              <Label htmlFor="ws-own-brand" className="text-xs">Brand name <span className="text-muted-foreground font-normal">(as it appears in ad data)</span></Label>
+              <Input
+                id="ws-own-brand"
+                value={wsOwnBrand}
+                onChange={e => setWsOwnBrand(e.target.value)}
+                placeholder="e.g. ORLEN"
+                className="h-8 text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">Used in charts and the Brand Deep Dive view.</p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="company-name" className="text-xs">Company name <span className="text-muted-foreground font-normal">(formal / legal)</span></Label>
               <Input
                 id="company-name"
                 value={companyName}
@@ -352,7 +355,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
           >
             {savingProfile
               ? <><Loader2 className="size-3 animate-spin" /> Saving…</>
-              : <><Sparkles className="size-3" /> Save AI profile</>
+              : <><Sparkles className="size-3" /> Save brand profile</>
             }
           </Button>
         </div>
