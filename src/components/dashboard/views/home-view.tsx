@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   ArrowRight,
   Sparkles,
@@ -9,7 +9,6 @@ import {
   Users,
   LayoutDashboard,
   TrendingUp,
-  AlertTriangle,
   CheckCircle2,
   Send,
   X,
@@ -29,10 +28,6 @@ import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import {
-  performanceIndexRanking,
-  creativeLibrary,
-} from '@/components/dashboard/mock-data'
 import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
 import { cn } from '@/lib/utils'
 
@@ -47,35 +42,6 @@ interface Props {
   onNavigate: (view: ViewId) => void
   connectionId?: string
 }
-
-// ─── Auto-insights ────────────────────────────────────────────────────────────
-
-const AUTO_INSIGHTS = [
-  {
-    type: 'warning' as const,
-    icon: AlertTriangle,
-    title: 'Shell spend surge detected',
-    body: 'Shell increased estimated weekly spend by +28% — 8 new Google Do-stage ads launched.',
-    action: 'View Competitive Intelligence',
-    view: 'competitive' as ViewId,
-  },
-  {
-    type: 'success' as const,
-    icon: CheckCircle2,
-    title: 'ORLEN share up +1.1 pts',
-    body: 'ORLEN holds 13.7% share of estimated weekly market spend, the highest in 4 weeks.',
-    action: 'View Market Overview',
-    view: 'overview' as ViewId,
-  },
-  {
-    type: 'info' as const,
-    icon: TrendingUp,
-    title: 'New high-PI creative from Aral',
-    body: 'Aral\'s "Summer Road Trip" Meta ad scored PI 73 — highest new entry this week.',
-    action: 'Browse Creative Library',
-    view: 'creative-library' as ViewId,
-  },
-]
 
 // ─── Explore shortcuts ────────────────────────────────────────────────────────
 
@@ -160,9 +126,6 @@ function resolveWidgets(query: string): SmartWidget[] {
   return widgets
 }
 
-function PLATFORM_COLOR(p: string) {
-  return ({ Meta: '#1877F2', Google: '#34A853', LinkedIn: '#0A66C2' } as Record<string, string>)[p] ?? '#888'
-}
 function PI_COLOR(pi: number) {
   return pi > 70 ? '#16a34a' : pi > 50 ? '#d97706' : '#dc2626'
 }
@@ -192,6 +155,16 @@ function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidge
   }
 
   if (widget.type === 'pi-ranking') {
+    const piData: { advertiser: string; score: number }[] = (widget as unknown as { piData?: { advertiser: string; score: number }[] }).piData ?? []
+    if (piData.length === 0) {
+      return (
+        <div className="bg-white rounded-lg border border-border shadow-sm p-5 flex flex-col items-center justify-center gap-2 min-h-[120px]">
+          <BarChart3 className="size-6 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">No PI data available yet — sync your Snowflake table first.</p>
+          <button onClick={() => onNavigate('connections')} className="text-xs text-indigo-600 hover:underline">Go to Connections</button>
+        </div>
+      )
+    }
     return (
       <div className="bg-white rounded-lg border border-border shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
@@ -199,7 +172,7 @@ function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidge
           <button onClick={() => onNavigate('competitive')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">Open full view <ArrowRight className="size-3" /></button>
         </div>
         <div className="space-y-2">
-          {performanceIndexRanking.map((entry, i) => (
+          {piData.map((entry, i) => (
             <div key={entry.advertiser} className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground w-3 tabular-nums">{i + 1}</span>
               <span className="text-xs font-medium w-16 truncate">{entry.advertiser}</span>
@@ -207,8 +180,8 @@ function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidge
                 <div
                   className="h-2 rounded-full transition-all"
                   style={{
-                    width: `${(entry.score / 80) * 100}%`,
-                    backgroundColor: entry.advertiser === 'ORLEN' ? BRAND_COLORS.orlen : '#94A3B8',
+                    width: `${(entry.score / 100) * 100}%`,
+                    backgroundColor: BRAND_COLORS[entry.advertiser.toLowerCase()] ?? '#94A3B8',
                   }}
                 />
               </div>
@@ -221,34 +194,36 @@ function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidge
   }
 
   if (widget.type === 'creatives') {
-    const items = creativeLibrary
-      .filter(c => (!widget.brand || c.brand === widget.brand) && (!widget.platform || c.platform === widget.platform))
-      .slice(0, 4)
+    const liveItems: { id: string; brand: string; headline: string; pi: number; funnelStage: string }[] =
+      (widget as unknown as { liveItems?: { id: string; brand: string; headline: string; pi: number; funnelStage: string }[] }).liveItems ?? []
     return (
       <div className="bg-white rounded-lg border border-border shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold">{widget.title}</p>
           <button onClick={() => onNavigate('creative-library')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">Browse all <ArrowRight className="size-3" /></button>
         </div>
-        <div className="grid grid-cols-4 gap-3">
-          {items.map(c => (
-            <div key={c.id} className="rounded-md border border-border overflow-hidden">
-              <div className="aspect-video bg-muted flex items-center justify-center">
-                <span className="text-lg font-bold" style={{ color: BRAND_COLORS[c.brand.toLowerCase().replace(' ', '')] ?? '#888' }}>
-                  {c.brand.charAt(0)}
-                </span>
-              </div>
-              <div className="p-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px]" style={{ color: PLATFORM_COLOR(c.platform) }}>{c.platform}</span>
-                  <span className="text-xs font-bold" style={{ color: PI_COLOR(c.performanceIndex) }}>{c.performanceIndex}</span>
+        {liveItems.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No creatives available yet.</p>
+        ) : (
+          <div className="grid grid-cols-4 gap-3">
+            {liveItems.slice(0, 4).map(c => (
+              <div key={c.id} className="rounded-md border border-border overflow-hidden">
+                <div className="aspect-video bg-muted flex items-center justify-center">
+                  <span className="text-lg font-bold" style={{ color: BRAND_COLORS[c.brand.toLowerCase().replace(/[\s\-_]/g, '')] ?? '#888' }}>
+                    {c.brand.charAt(0)}
+                  </span>
                 </div>
-                <p className="text-[10px] font-medium line-clamp-2 mt-0.5 leading-snug">{c.title}</p>
+                <div className="p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">{c.funnelStage}</span>
+                    <span className="text-xs font-bold" style={{ color: PI_COLOR(c.pi) }}>{c.pi}</span>
+                  </div>
+                  <p className="text-[10px] font-medium line-clamp-2 mt-0.5 leading-snug">{c.headline}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-        {items.length === 0 && <p className="text-xs text-muted-foreground">No creatives match this filter.</p>}
+            ))}
+          </div>
+        )}
       </div>
     )
   }
@@ -478,42 +453,81 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
       {/* ── Two-column: insights + AI chat entry ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
-        {/* Auto insights — 2 cols */}
+        {/* Highlights — derived from live data — 2 cols */}
         <div className="xl:col-span-2 space-y-3">
           <p className="text-sm font-semibold">This Week's Highlights</p>
-          {AUTO_INSIGHTS.map(insight => {
-            const Icon = insight.icon
-            return (
-              <div
-                key={insight.title}
-                className={cn(
-                  'bg-white rounded-lg border shadow-sm p-4 flex gap-3',
-                  insight.type === 'warning' && 'border-amber-200',
-                  insight.type === 'success' && 'border-emerald-200',
-                  insight.type === 'info'    && 'border-blue-200',
-                )}
-              >
-                <div className={cn(
-                  'size-8 rounded-lg flex items-center justify-center shrink-0',
-                  insight.type === 'warning' && 'bg-amber-50 text-amber-600',
-                  insight.type === 'success' && 'bg-emerald-50 text-emerald-600',
-                  insight.type === 'info'    && 'bg-blue-50 text-blue-600',
-                )}>
-                  <Icon className="size-4" />
+          {liveData ? (
+            (() => {
+              const table: { advertiser: string; totalAds: number; newAds: number; weeklySpend: number; avgPi: number | null }[] =
+                liveData.table ?? []
+              const sorted = [...table].sort((a, b) => b.weeklySpend - a.weeklySpend)
+              const topSpender = sorted[0]
+              const topPi = [...table].sort((a, b) => (b.avgPi ?? 0) - (a.avgPi ?? 0))[0]
+              const mostNewAds = [...table].sort((a, b) => b.newAds - a.newAds)[0]
+              const highlights = [
+                topSpender && {
+                  type: 'warning' as const, icon: TrendingUp,
+                  title: `${topSpender.advertiser} leads spend this week`,
+                  body: `Estimated weekly spend €${topSpender.weeklySpend.toLocaleString()} with ${topSpender.totalAds} active ads.`,
+                  action: 'View Market Overview', view: 'overview' as ViewId,
+                },
+                topPi && topPi.avgPi != null && {
+                  type: 'success' as const, icon: CheckCircle2,
+                  title: `${topPi.advertiser} has highest avg. PI`,
+                  body: `Average performance index of ${topPi.avgPi} across ${topPi.totalAds} ads this week.`,
+                  action: 'View Performance', view: 'performance' as ViewId,
+                },
+                mostNewAds && mostNewAds.newAds > 0 && {
+                  type: 'info' as const, icon: TrendingUp,
+                  title: `${mostNewAds.advertiser} most active with new ads`,
+                  body: `${mostNewAds.newAds} new ads launched this week out of ${mostNewAds.totalAds} total active.`,
+                  action: 'View Competitive Intel', view: 'competitive' as ViewId,
+                },
+              ].filter(Boolean) as { type: 'warning'|'success'|'info'; icon: React.ElementType; title: string; body: string; action: string; view: ViewId }[]
+              if (highlights.length === 0) return (
+                <div className="bg-zinc-50 rounded-lg border border-border p-5 text-center text-xs text-muted-foreground">
+                  No highlights available yet — sync your data to see insights.
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold">{insight.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{insight.body}</p>
-                </div>
-                <button
-                  onClick={() => onNavigate(insight.view)}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 shrink-0 self-center"
-                >
-                  {insight.action} <ArrowRight className="size-3" />
-                </button>
-              </div>
-            )
-          })}
+              )
+              return highlights.map(insight => {
+                const Icon = insight.icon
+                return (
+                  <div
+                    key={insight.title}
+                    className={cn(
+                      'bg-white rounded-lg border shadow-sm p-4 flex gap-3',
+                      insight.type === 'warning' && 'border-amber-200',
+                      insight.type === 'success' && 'border-emerald-200',
+                      insight.type === 'info'    && 'border-blue-200',
+                    )}
+                  >
+                    <div className={cn(
+                      'size-8 rounded-lg flex items-center justify-center shrink-0',
+                      insight.type === 'warning' && 'bg-amber-50 text-amber-600',
+                      insight.type === 'success' && 'bg-emerald-50 text-emerald-600',
+                      insight.type === 'info'    && 'bg-blue-50 text-blue-600',
+                    )}>
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold">{insight.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{insight.body}</p>
+                    </div>
+                    <button
+                      onClick={() => onNavigate(insight.view)}
+                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 shrink-0 self-center"
+                    >
+                      {insight.action} <ArrowRight className="size-3" />
+                    </button>
+                  </div>
+                )
+              })
+            })()
+          ) : (
+            <div className="bg-zinc-50 rounded-lg border border-border p-5 text-center text-xs text-muted-foreground">
+              Connect and sync your Snowflake data to see live highlights here.
+            </div>
+          )}
         </div>
 
         {/* AI chat entry — 1 col */}
@@ -621,32 +635,13 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
                   </div>
                 )
               })
-            : creativeLibrary.slice(0, 5).map(c => {
-                const brandColor = (BRAND_COLORS as Record<string, string>)[c.brand.toLowerCase().replace(' ', '')] ?? '#888'
-                const platformColor = PLATFORM_COLOR(c.platform)
-                const sentimentPct = ((c.sentiment + 1) / 2) * 100
-                return (
-                  <div
-                    key={c.id}
-                    className="bg-white rounded-lg border border-border shadow-sm overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
-                    onClick={() => onNavigate('creative-library')}
-                  >
-                    <div className="aspect-video bg-muted flex items-center justify-center">
-                      <span className="text-xl font-bold" style={{ color: brandColor }}>{c.brand.charAt(0)}</span>
-                    </div>
-                    <div className="p-2.5">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-semibold" style={{ color: platformColor }}>{c.platform}</span>
-                        <span className="text-xs font-bold" style={{ color: PI_COLOR(c.performanceIndex) }}>{c.performanceIndex}</span>
-                      </div>
-                      <p className="text-[11px] font-medium line-clamp-2 leading-snug">{c.title}</p>
-                      <div className="mt-2">
-                        <Progress value={sentimentPct} className="h-1 mt-0.5" />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
+            : (
+              <div className="col-span-5 flex flex-col items-center justify-center gap-2 py-8 bg-white rounded-lg border border-border">
+                <ImageIcon className="size-6 text-muted-foreground/40" />
+                <p className="text-xs text-muted-foreground">No creatives yet — sync your Snowflake data first.</p>
+                <button onClick={() => onNavigate('connections')} className="text-xs text-indigo-600 hover:underline">Go to Connections</button>
+              </div>
+            )
           }
         </div>
       </div>
