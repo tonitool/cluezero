@@ -3,11 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function PATCH(req: NextRequest) {
-  const { workspaceId, name, slug, ownBrand } = await req.json() as {
+  const { workspaceId, name, slug, ownBrand, companyName, industry, website, brandDescription, targetAudience, aiContext } = await req.json() as {
     workspaceId: string
     name: string
     slug: string
     ownBrand?: string
+    companyName?: string
+    industry?: string
+    website?: string
+    brandDescription?: string
+    targetAudience?: string
+    aiContext?: string
   }
 
   if (!workspaceId || !name || !slug) {
@@ -56,7 +62,17 @@ export async function PATCH(req: NextRequest) {
 
   const { error: updateError } = await admin
     .from('workspaces')
-    .update({ name, slug, ...(ownBrand !== undefined ? { own_brand: ownBrand || null } : {}) })
+    .update({
+      name,
+      slug,
+      ...(ownBrand       !== undefined ? { own_brand:          ownBrand       || null } : {}),
+      ...(companyName    !== undefined ? { company_name:       companyName    || null } : {}),
+      ...(industry       !== undefined ? { industry:           industry       || null } : {}),
+      ...(website        !== undefined ? { website:            website        || null } : {}),
+      ...(brandDescription !== undefined ? { brand_description: brandDescription || null } : {}),
+      ...(targetAudience !== undefined ? { target_audience:    targetAudience  || null } : {}),
+      ...(aiContext      !== undefined ? { ai_context:         aiContext       || null } : {}),
+    })
     .eq('id', workspaceId)
 
   if (updateError) {

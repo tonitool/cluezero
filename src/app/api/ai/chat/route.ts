@@ -195,31 +195,78 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
   }
 }
 
+// ─── Workspace profile ───────────────────────────────────────────────────────
+
+interface WorkspaceProfile {
+  companyName:      string
+  industry:         string
+  website:          string
+  brandDescription: string
+  targetAudience:   string
+  aiContext:        string
+  ownBrand:         string
+}
+
+async function loadWorkspaceProfile(workspaceId: string): Promise<WorkspaceProfile> {
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const { data } = await admin
+    .from('workspaces')
+    .select('own_brand, company_name, industry, website, brand_description, target_audience, ai_context')
+    .eq('id', workspaceId)
+    .single()
+
+  return {
+    ownBrand:         data?.own_brand          ?? '',
+    companyName:      data?.company_name       ?? '',
+    industry:         data?.industry           ?? '',
+    website:          data?.website            ?? '',
+    brandDescription: data?.brand_description  ?? '',
+    targetAudience:   data?.target_audience    ?? '',
+    aiContext:        data?.ai_context         ?? '',
+  }
+}
+
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(ctx: NonNullable<Awaited<ReturnType<typeof buildDataContext>>>, ownBrand: string) {
-  return `You are a competitive intelligence analyst assistant embedded inside a paid media analytics platform. You have access to real ad market data for a fuel & mobility retail sector workspace.
+function buildSystemPrompt(
+  ctx: NonNullable<Awaited<ReturnType<typeof buildDataContext>>>,
+  profile: WorkspaceProfile,
+) {
+  const clientBlock = [
+    profile.companyName      && `Company: ${profile.companyName}`,
+    profile.industry         && `Industry: ${profile.industry}`,
+    profile.website          && `Website: ${profile.website}`,
+    profile.targetAudience   && `Target audience: ${profile.targetAudience}`,
+    profile.brandDescription && `Brand: ${profile.brandDescription}`,
+    profile.aiContext        && `Additional context: ${profile.aiContext}`,
+  ].filter(Boolean).join('\n')
 
-YOUR OWN BRAND: ${ctx.ownBrandName} (the user's brand you are helping)
+  return `You are a senior competitive intelligence analyst embedded inside a paid media analytics platform. You are working exclusively for the client described below.
 
-LATEST DATA SNAPSHOT (week ending ${ctx.latestWeek}, ${ctx.totalWeeks} weeks of history):
+═══ CLIENT PROFILE ═══
+${clientBlock || `Brand: ${ctx.ownBrandName}`}
+Own brand in data: ${ctx.ownBrandName}
+
+═══ MARKET DATA SNAPSHOT ═══
+Latest week: ${ctx.latestWeek} (${ctx.totalWeeks} weeks of history)
 Total estimated market weekly spend: €${ctx.totalMarketSpend.toLocaleString()}
-Number of tracked brands: ${ctx.brandCount}
+Tracked brands: ${ctx.brandCount}
 
 BRAND BREAKDOWN (sorted by weekly spend):
-Each brand entry includes: active ad count, new ads this week, estimated weekly spend, share of voice, week-over-week spend change (WoW), performance index (PI), funnel stage distribution (See/Think/Do/Care percentages), top messaging topics, and the 3 most recent creative headlines.
+Each entry: active ads · new ads this week · est. weekly spend · share % · WoW change · Performance Index · funnel split · top topics · recent headlines
 ${ctx.brandLines}
 
-INSTRUCTIONS:
-- Answer questions about this data concisely and in a consultative tone
-- Use the actual numbers above — do not invent data
-- When referencing spend, always say "estimated" as these are spend estimates
-- You have access to creative headline text and funnel stage data — use these to comment on messaging strategy and creative direction
-- Focus insights on what matters for ${ownBrand}: competitive positioning, threats, opportunities
-- If asked about something not in the data (e.g. creative thumbnails, visual assets), say so clearly
-- Format responses with **bold** for key figures and brand names
-- Keep answers focused — 3-6 sentences for simple questions, structured bullets for complex ones
-- Today's date context: the latest data week ends ${ctx.latestWeek}`
+═══ INSTRUCTIONS ═══
+- You are advising ${profile.companyName || ctx.ownBrandName} — frame all insights from their perspective
+- Use the actual numbers — never invent data
+- Spend figures are estimates — say "estimated" when referencing them
+- Use the client profile above to add relevant strategic context (their objectives, audience, positioning)
+- Reference creative headlines and funnel data when discussing messaging strategy
+- Format: **bold** key figures and brand names; bullets for complex answers; 3-6 sentences for simple ones
+- If asked about something outside the data (visual creative, URLs, etc.) say so clearly`
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -241,12 +288,15 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) return new Response('AI not configured', { status: 503 })
 
-  // Build data context
-  const ctx = await buildDataContext(workspaceId, ownBrand, connectionId)
+  // Build data context + workspace profile in parallel
+  const [ctx, profile] = await Promise.all([
+    buildDataContext(workspaceId, ownBrand, connectionId),
+    loadWorkspaceProfile(workspaceId),
+  ])
 
   const systemPrompt = ctx
-    ? buildSystemPrompt(ctx, ownBrand)
-    : `You are a competitive intelligence assistant. No data has been synced to this workspace yet. Politely tell the user to go to Connections and sync their Snowflake data first.`
+    ? buildSystemPrompt(ctx, profile)
+    : `You are a competitive intelligence assistant for ${profile.companyName || ownBrand}. No ad data has been synced to this workspace yet. Politely tell the user to go to Connections and sync their Snowflake data first.`
 
   // Call OpenRouter with streaming
   const openRouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Check, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Check, Loader2, AlertCircle, Sparkles } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -57,6 +58,60 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
   const [wsOwnBrand, setWsOwnBrand] = useState(initialOwnBrand)
   const [savingWs, setSavingWs] = useState(false)
   const [wsFeedback, setWsFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // AI profile
+  const [companyName,       setCompanyName]       = useState('')
+  const [industry,          setIndustry]           = useState('')
+  const [website,           setWebsite]            = useState('')
+  const [brandDescription,  setBrandDescription]   = useState('')
+  const [targetAudience,    setTargetAudience]      = useState('')
+  const [aiContext,         setAiContext]           = useState('')
+  const [profileLoaded,     setProfileLoaded]       = useState(false)
+  const [savingProfile,     setSavingProfile]       = useState(false)
+  const [profileFeedback,   setProfileFeedback]     = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  useEffect(() => {
+    if (!workspaceId) return
+    fetch(`/api/workspace/profile?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.companyName      !== undefined) setCompanyName(d.companyName)
+        if (d.industry         !== undefined) setIndustry(d.industry)
+        if (d.website          !== undefined) setWebsite(d.website)
+        if (d.brandDescription !== undefined) setBrandDescription(d.brandDescription)
+        if (d.targetAudience   !== undefined) setTargetAudience(d.targetAudience)
+        if (d.aiContext        !== undefined) setAiContext(d.aiContext)
+        setProfileLoaded(true)
+      })
+      .catch(() => setProfileLoaded(true))
+  }, [workspaceId])
+
+  async function handleSaveProfile() {
+    setSavingProfile(true)
+    setProfileFeedback(null)
+    const res = await fetch('/api/workspace/update', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspaceId,
+        name: wsName,
+        slug: wsSlug,
+        companyName,
+        industry,
+        website,
+        brandDescription,
+        targetAudience,
+        aiContext,
+      }),
+    })
+    const data = await res.json()
+    setSavingProfile(false)
+    if (!res.ok) {
+      setProfileFeedback({ type: 'error', message: data.error ?? 'Failed to save.' })
+    } else {
+      setProfileFeedback({ type: 'success', message: 'AI profile saved. Claude will use this context in all future responses.' })
+    }
+  }
 
   const derivedSlug = wsName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
@@ -183,6 +238,123 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
               Save workspace
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* ── AI Intelligence Profile ── */}
+      <div className="bg-white rounded-lg border border-border shadow-sm p-5 mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="size-4 text-zinc-400" />
+          <p className="text-sm font-semibold">AI Intelligence Profile</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-5">
+          Tell Claude who you are. This context is injected into every AI conversation so responses are grounded in your brand, market, and objectives — not generic assumptions.
+        </p>
+
+        {!profileLoaded ? (
+          <div className="space-y-3">
+            {[1,2,3,4].map(i => <div key={i} className="h-8 bg-zinc-100 rounded animate-pulse" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="company-name" className="text-xs">Company name <span className="text-muted-foreground font-normal">(official)</span></Label>
+              <Input
+                id="company-name"
+                value={companyName}
+                onChange={e => setCompanyName(e.target.value)}
+                placeholder="e.g. Orlen S.A."
+                className="h-8 text-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="industry" className="text-xs">Industry / sector</Label>
+              <Input
+                id="industry"
+                value={industry}
+                onChange={e => setIndustry(e.target.value)}
+                placeholder="e.g. Fuel & Mobility Retail"
+                className="h-8 text-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="website" className="text-xs">Website</Label>
+              <Input
+                id="website"
+                value={website}
+                onChange={e => setWebsite(e.target.value)}
+                placeholder="e.g. https://orlen.pl"
+                className="h-8 text-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="target-audience" className="text-xs">Target audience</Label>
+              <Input
+                id="target-audience"
+                value={targetAudience}
+                onChange={e => setTargetAudience(e.target.value)}
+                placeholder="e.g. Polish drivers, fleet operators, families"
+                className="h-8 text-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 md:col-span-2">
+              <Label htmlFor="brand-description" className="text-xs">Brand description <span className="text-muted-foreground font-normal">(positioning, differentiators)</span></Label>
+              <Textarea
+                id="brand-description"
+                value={brandDescription}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setBrandDescription(e.target.value)}
+                placeholder="e.g. Poland's largest petrol company. Known for the VITAY loyalty programme, EV charging network, and premium fuels. Expanding across Central Europe."
+                className="text-sm resize-none min-h-[72px]"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 md:col-span-2">
+              <Label htmlFor="ai-context" className="text-xs">Additional AI context <span className="text-muted-foreground font-normal">(objectives, constraints, anything Claude should know)</span></Label>
+              <Textarea
+                id="ai-context"
+                value={aiContext}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAiContext(e.target.value)}
+                placeholder="e.g. Our main paid media objective this quarter is loyalty sign-ups. We're under-indexed on Google vs competitors. Shell is our primary threat on premium positioning."
+                className="text-sm resize-none min-h-[72px]"
+                rows={3}
+              />
+            </div>
+
+          </div>
+        )}
+
+        {profileFeedback && (
+          <div className={cn(
+            'flex items-center gap-2 text-xs px-3 py-2 rounded-md border mt-4',
+            profileFeedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-rose-50 text-rose-600 border-rose-200'
+          )}>
+            {profileFeedback.type === 'success'
+              ? <Check className="size-3.5 shrink-0" />
+              : <AlertCircle className="size-3.5 shrink-0" />}
+            {profileFeedback.message}
+          </div>
+        )}
+
+        <div className="mt-4">
+          <Button
+            size="sm"
+            className="h-8 text-xs gap-1.5"
+            disabled={savingProfile || !profileLoaded}
+            onClick={handleSaveProfile}
+          >
+            {savingProfile
+              ? <><Loader2 className="size-3 animate-spin" /> Saving…</>
+              : <><Sparkles className="size-3" /> Save AI profile</>
+            }
+          </Button>
         </div>
       </div>
 
