@@ -43,7 +43,7 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
   // Fetch ads with spend + enrichments
   let adsQuery = admin
     .from('ads')
-    .select(`id, first_seen_at, performance_index, topic,
+    .select(`id, first_seen_at, performance_index, topic, headline,
       tracked_brands ( name ),
       ad_spend_estimates ( week_start, est_spend_eur, est_reach ),
       ad_enrichments ( funnel_stage )`)
@@ -61,11 +61,13 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
     newAdsThisWeek: number
     totalSpend: number
     latestWeekSpend: number
+    prevWeekSpend: number
     avgPi: number | null
     piScores: number[]
     topics: string[]
     funnelStages: string[]
     platforms: string[]
+    recentHeadlines: Array<{ headline: string; first_seen_at: string }>
   }> = {}
 
   const allWeekStarts = new Set<string>()
@@ -74,11 +76,14 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
     const rawName = (ad.tracked_brands as unknown as { name: string } | null)?.name ?? 'Unknown'
     const key = brandKey(rawName)
     if (!byBrand[key]) {
-      byBrand[key] = { name: rawName, totalAds: 0, newAdsThisWeek: 0, totalSpend: 0, latestWeekSpend: 0, avgPi: null, piScores: [], topics: [], funnelStages: [], platforms: [] }
+      byBrand[key] = { name: rawName, totalAds: 0, newAdsThisWeek: 0, totalSpend: 0, latestWeekSpend: 0, prevWeekSpend: 0, avgPi: null, piScores: [], topics: [], funnelStages: [], platforms: [], recentHeadlines: [] }
     }
     byBrand[key].totalAds++
     if (ad.performance_index != null) byBrand[key].piScores.push(Number(ad.performance_index))
     if (ad.topic) byBrand[key].topics.push(String(ad.topic))
+    if ((ad as unknown as { headline?: string }).headline) {
+      byBrand[key].recentHeadlines.push({ headline: (ad as unknown as { headline: string }).headline, first_seen_at: ad.first_seen_at })
+    }
 
     const enrichments = Array.isArray(ad.ad_enrichments) ? ad.ad_enrichments : []
     for (const e of enrichments) {
@@ -96,7 +101,7 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
   const latestWeek = sortedWeeks[sortedWeeks.length - 1]
   const prevWeek = sortedWeeks[sortedWeeks.length - 2]
 
-  // Recalculate latest week spend per brand
+  // Recalculate latest week spend and prev week spend per brand
   for (const ad of rows) {
     const rawName = (ad.tracked_brands as unknown as { name: string } | null)?.name ?? 'Unknown'
     const key = brandKey(rawName)
@@ -105,10 +110,8 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
       if (est.week_start === latestWeek) {
         byBrand[key].latestWeekSpend += Number(est.est_spend_eur ?? 0)
       }
-      // Count new ads this week
-      const weekStart = getWeekStart(ad.first_seen_at)
-      if (weekStart === latestWeek) {
-        // already counted above but only once, handle via set
+      if (prevWeek && est.week_start === prevWeek) {
+        byBrand[key].prevWeekSpend += Number(est.est_spend_eur ?? 0)
       }
     }
   }
@@ -137,10 +140,43 @@ async function buildDataContext(workspaceId: string, ownBrand: string, connectio
     .sort((a, b) => b[1].latestWeekSpend - a[1].latestWeekSpend)
     .map(([, b]) => {
       const share = totalLatestSpend > 0 ? ((b.latestWeekSpend / totalLatestSpend) * 100).toFixed(1) : '0'
-      const topTopics = [...new Set(b.topics)].slice(0, 3).join(', ') || 'N/A'
-      const topFunnels = [...new Set(b.funnelStages)].slice(0, 3).join(', ') || 'N/A'
+
+      // WoW spend change
+      let spendChangePct = 'N/A'
+      if (b.latestWeekSpend > 0 && b.prevWeekSpend > 0) {
+        const pct = ((b.latestWeekSpend - b.prevWeekSpend) / b.prevWeekSpend) * 100
+        spendChangePct = (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%'
+      }
+
+      // Funnel distribution
+      let funnelDist = 'N/A'
+      if (b.funnelStages.length > 0) {
+        const funnelCounts: Record<string, number> = {}
+        for (const s of b.funnelStages) funnelCounts[s] = (funnelCounts[s] ?? 0) + 1
+        funnelDist = Object.entries(funnelCounts)
+          .sort((a2, b2) => b2[1] - a2[1])
+          .map(([stage, count]) => `${stage} ${Math.round((count / b.funnelStages.length) * 100)}%`)
+          .join(', ')
+      }
+
+      // Top 3 recent headlines
+      const sortedHeadlines = [...b.recentHeadlines]
+        .sort((a2, b2) => new Date(b2.first_seen_at).getTime() - new Date(a2.first_seen_at).getTime())
+        .slice(0, 3)
+        .map(h => `"${h.headline}"`)
+      const headlinesStr = sortedHeadlines.length > 0 ? sortedHeadlines.join('; ') : 'N/A'
+
+      // Top 3 topics by count
+      const topicCounts: Record<string, number> = {}
+      for (const t of b.topics) topicCounts[t] = (topicCounts[t] ?? 0) + 1
+      const topTopics = Object.entries(topicCounts)
+        .sort((a2, b2) => b2[1] - a2[1])
+        .slice(0, 3)
+        .map(([t]) => t)
+        .join(', ') || 'N/A'
+
       const pi = b.avgPi != null ? `PI ${b.avgPi}` : 'PI N/A'
-      return `- ${b.name}: ${b.totalAds} active ads, ${b.newAdsThisWeek} new this week, est. weekly spend €${Math.round(b.latestWeekSpend).toLocaleString()} (${share}% share), ${pi}, topics: ${topTopics}, funnel stages: ${topFunnels}`
+      return `- ${b.name}: ${b.totalAds} active ads, ${b.newAdsThisWeek} new this week, est. weekly spend €${Math.round(b.latestWeekSpend).toLocaleString()} (${share}% share, WoW ${spendChangePct}), ${pi}, funnel: ${funnelDist}, top topics: ${topTopics}, recent headlines: ${headlinesStr}`
     })
     .join('\n')
 
@@ -171,14 +207,16 @@ Total estimated market weekly spend: €${ctx.totalMarketSpend.toLocaleString()}
 Number of tracked brands: ${ctx.brandCount}
 
 BRAND BREAKDOWN (sorted by weekly spend):
+Each brand entry includes: active ad count, new ads this week, estimated weekly spend, share of voice, week-over-week spend change (WoW), performance index (PI), funnel stage distribution (See/Think/Do/Care percentages), top messaging topics, and the 3 most recent creative headlines.
 ${ctx.brandLines}
 
 INSTRUCTIONS:
 - Answer questions about this data concisely and in a consultative tone
 - Use the actual numbers above — do not invent data
 - When referencing spend, always say "estimated" as these are spend estimates
+- You have access to creative headline text and funnel stage data — use these to comment on messaging strategy and creative direction
 - Focus insights on what matters for ${ownBrand}: competitive positioning, threats, opportunities
-- If asked about something not in the data (e.g. creative thumbnails, exact ad text), say so clearly
+- If asked about something not in the data (e.g. creative thumbnails, visual assets), say so clearly
 - Format responses with **bold** for key figures and brand names
 - Keep answers focused — 3-6 sentences for simple questions, structured bullets for complex ones
 - Today's date context: the latest data week ends ${ctx.latestWeek}`

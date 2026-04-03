@@ -298,7 +298,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
           {view === 'ai'               && <AiInsightsView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
           {view === 'creative-library' && <CreativeLibraryView />}
           {view === 'strategy'         && <StrategyView />}
-          {view === 'alerts'           && <AlertsView />}
+          {view === 'alerts'           && <AlertsView workspaceId={workspaceId} />}
           {view === 'connections'      && <ConnectionsView workspaceId={workspaceId} />}
           {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
           {view === 'account'          && <AccountView workspaceId={workspaceId} />}
