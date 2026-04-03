@@ -509,7 +509,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
           {liveCreatives
-            ? liveCreatives.slice(0, 5).map((c: { id: string; brand: string; headline: string; pi: number; funnelStage: string }) => {
+            ? liveCreatives.slice(0, 5).map((c: { id: string; brand: string; title: string; performanceIndex: number; funnelStage: string }) => {
                 const brandColor = (BRAND_COLORS as Record<string, string>)[c.brand.toLowerCase().replace(/[\s\-_]/g, '')] ?? '#888'
                 return (
                   <div
@@ -523,11 +523,11 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
                     <div className="p-2.5">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] font-semibold text-muted-foreground">{c.funnelStage}</span>
-                        <span className="text-xs font-bold" style={{ color: PI_COLOR(c.pi) }}>{c.pi}</span>
+                        <span className="text-xs font-bold" style={{ color: PI_COLOR(c.performanceIndex) }}>{c.performanceIndex}</span>
                       </div>
-                      <p className="text-[11px] font-medium line-clamp-2 leading-snug">{c.headline}</p>
+                      <p className="text-[11px] font-medium line-clamp-2 leading-snug">{c.title}</p>
                       <div className="mt-2">
-                        <Progress value={(c.pi / 100) * 100} className="h-1 mt-0.5" />
+                        <Progress value={(c.performanceIndex / 100) * 100} className="h-1 mt-0.5" />
                       </div>
                     </div>
                   </div>
