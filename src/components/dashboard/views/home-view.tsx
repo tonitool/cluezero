@@ -5,7 +5,6 @@ import {
   ArrowRight,
   Sparkles,
   ImageIcon,
-  BarChart3,
   Users,
   LayoutDashboard,
   TrendingUp,
@@ -79,185 +78,31 @@ const EXPLORE_SHORTCUTS = [
 // ─── AI Smart Filter ─────────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
-  'Shell spend on Meta this week',
-  'ORLEN vs Aral creative performance',
-  'Top Do-stage ads',
-  'Which brand is most active on LinkedIn?',
-  'Whitespace opportunities for ORLEN',
+  'Which brand is spending the most this week?',
+  'Whitespace opportunities I should act on',
+  'How is my brand performing vs competitors?',
+  'Which competitor should I watch most closely?',
+  'What funnel stages are competitors focusing on?',
 ]
-
-type SmartWidget =
-  | { type: 'spend-chart'; title: string }
-  | { type: 'pi-ranking'; title: string }
-  | { type: 'creatives'; title: string; brand?: string; platform?: string }
-  | { type: 'insight-text'; title: string; body: string }
-
-function resolveWidgets(query: string): SmartWidget[] {
-  const q = query.toLowerCase()
-  const widgets: SmartWidget[] = []
-
-  if (q.includes('spend') || q.includes('budget') || q.includes('market')) {
-    widgets.push({ type: 'spend-chart', title: 'Weekly Estimated Spend by Brand' })
-  }
-  if (q.includes('performance') || q.includes('pi') || q.includes('ranking') || q.includes('score')) {
-    widgets.push({ type: 'pi-ranking', title: 'Performance Index Ranking' })
-  }
-  if (q.includes('creative') || q.includes('ad') || q.includes('format')) {
-    const brand = ['shell', 'aral', 'orlen', 'eni', 'esso', 'circle k'].find(b => q.includes(b))
-    const platform = ['meta', 'google', 'linkedin'].find(p => q.includes(p))
-    widgets.push({
-      type: 'creatives',
-      title: `${brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : 'Top'} Creatives${platform ? ` on ${platform.charAt(0).toUpperCase() + platform.slice(1)}` : ''}`,
-      brand: brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : undefined,
-      platform: platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : undefined,
-    })
-  }
-  if (q.includes('whitespace') || q.includes('opportunit') || q.includes('missing') || q.includes('gap')) {
-    widgets.push({
-      type: 'insight-text',
-      title: 'Whitespace Opportunities',
-      body: '**LinkedIn B2B** — Only ENI is active. Fleet management and corporate card messaging is almost entirely unclaimed.\n\n**Do-stage on Google** — Shell just entered this space. ORLEN\'s bottom-of-funnel Google presence is minimal.\n\n**Care-stage retention** — Only 8% of all competitor ads target existing customers. ORLEN\'s loyalty programme is under-activated.',
-    })
-  }
-  if (widgets.length === 0) {
-    widgets.push({ type: 'spend-chart', title: 'Weekly Estimated Spend by Brand' })
-    widgets.push({ type: 'pi-ranking', title: 'Performance Index Ranking' })
-  }
-  return widgets
-}
 
 function PI_COLOR(pi: number) {
   return pi > 70 ? '#16a34a' : pi > 50 ? '#d97706' : '#dc2626'
 }
 
-function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidget; onNavigate: (v: ViewId) => void; spendData: Record<string, unknown>[] }) {
-  if (widget.type === 'spend-chart') {
+function renderMarkdown(text: string) {
+  return text.split('\n').map((line, i, arr) => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/)
     return (
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">{widget.title}</p>
-          <button onClick={() => onNavigate('overview')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">Open full view <ArrowRight className="size-3" /></button>
-        </div>
-        <div style={{ height: 200 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={spendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <XAxis dataKey="week" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `€${(v/1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: unknown) => [`€${Number(v).toLocaleString()}`, undefined] as [string, undefined]} />
-              {Object.entries(BRAND_COLORS).map(([k, c]) => (
-                <Bar key={k} dataKey={k} stackId="a" fill={c} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === 'pi-ranking') {
-    const piData: { advertiser: string; score: number }[] = (widget as unknown as { piData?: { advertiser: string; score: number }[] }).piData ?? []
-    if (piData.length === 0) {
-      return (
-        <div className="bg-white rounded-lg border border-border shadow-sm p-5 flex flex-col items-center justify-center gap-2 min-h-[120px]">
-          <BarChart3 className="size-6 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground">No PI data available yet — sync your Snowflake table first.</p>
-          <button onClick={() => onNavigate('connections')} className="text-xs text-indigo-600 hover:underline">Go to Connections</button>
-        </div>
-      )
-    }
-    return (
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">{widget.title}</p>
-          <button onClick={() => onNavigate('competitive')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">Open full view <ArrowRight className="size-3" /></button>
-        </div>
-        <div className="space-y-2">
-          {piData.map((entry, i) => (
-            <div key={entry.advertiser} className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground w-3 tabular-nums">{i + 1}</span>
-              <span className="text-xs font-medium w-16 truncate">{entry.advertiser}</span>
-              <div className="flex-1 bg-zinc-100 rounded-full h-2">
-                <div
-                  className="h-2 rounded-full transition-all"
-                  style={{
-                    width: `${(entry.score / 100) * 100}%`,
-                    backgroundColor: BRAND_COLORS[entry.advertiser.toLowerCase()] ?? '#94A3B8',
-                  }}
-                />
-              </div>
-              <span className="text-xs font-bold tabular-nums" style={{ color: PI_COLOR(entry.score) }}>{entry.score}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  if (widget.type === 'creatives') {
-    const liveItems: { id: string; brand: string; headline: string; pi: number; funnelStage: string }[] =
-      (widget as unknown as { liveItems?: { id: string; brand: string; headline: string; pi: number; funnelStage: string }[] }).liveItems ?? []
-    return (
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">{widget.title}</p>
-          <button onClick={() => onNavigate('creative-library')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">Browse all <ArrowRight className="size-3" /></button>
-        </div>
-        {liveItems.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No creatives available yet.</p>
-        ) : (
-          <div className="grid grid-cols-4 gap-3">
-            {liveItems.slice(0, 4).map(c => (
-              <div key={c.id} className="rounded-md border border-border overflow-hidden">
-                <div className="aspect-video bg-muted flex items-center justify-center">
-                  <span className="text-lg font-bold" style={{ color: BRAND_COLORS[c.brand.toLowerCase().replace(/[\s\-_]/g, '')] ?? '#888' }}>
-                    {c.brand.charAt(0)}
-                  </span>
-                </div>
-                <div className="p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground">{c.funnelStage}</span>
-                    <span className="text-xs font-bold" style={{ color: PI_COLOR(c.pi) }}>{c.pi}</span>
-                  </div>
-                  <p className="text-[10px] font-medium line-clamp-2 mt-0.5 leading-snug">{c.headline}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+      <span key={i}>
+        {parts.map((part, j) =>
+          part.startsWith('**') && part.endsWith('**')
+            ? <strong key={j}>{part.slice(2, -2)}</strong>
+            : part
         )}
-      </div>
+        {i < arr.length - 1 && <br />}
+      </span>
     )
-  }
-
-  if (widget.type === 'insight-text') {
-    const lines = widget.body.split('\n\n')
-    return (
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">{widget.title}</p>
-          <button onClick={() => onNavigate('orlen')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">Open full view <ArrowRight className="size-3" /></button>
-        </div>
-        <div className="space-y-3">
-          {lines.map((line, i) => {
-            const parts = line.split(/(\*\*[^*]+\*\*)/)
-            return (
-              <div key={i} className="flex gap-2">
-                <div className="size-1.5 rounded-full bg-zinc-800 mt-1.5 shrink-0" />
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {parts.map((p, j) =>
-                    p.startsWith('**') && p.endsWith('**')
-                      ? <strong key={j} className="text-foreground">{p.slice(2, -2)}</strong>
-                      : p
-                  )}
-                </p>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  return null
+  })
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -265,8 +110,9 @@ function SmartWidgetCard({ widget, onNavigate, spendData }: { widget: SmartWidge
 export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate, connectionId }: Props) {
   const [query, setQuery] = useState('')
   const [submitted, setSubmitted] = useState('')
-  const [widgets, setWidgets] = useState<SmartWidget[]>([])
+  const [aiAnswer, setAiAnswer] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
 
   // Real data
@@ -329,17 +175,50 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
     if (!q.trim()) return
     setIsAnalyzing(true)
     setSubmitted(q)
-    setTimeout(() => {
-      setWidgets(resolveWidgets(q))
+    setAiAnswer('')
+
+    if (!workspaceId) {
       setIsAnalyzing(false)
-      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
-    }, 900)
+      return
+    }
+
+    const abort = new AbortController()
+    abortRef.current = abort
+
+    fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abort.signal,
+      body: JSON.stringify({
+        workspaceId,
+        ownBrand,
+        connectionId,
+        messages: [{ role: 'user', content: q }],
+      }),
+    })
+      .then(async res => {
+        if (!res.ok) { setAiAnswer('Could not get a response right now.'); return }
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        let accumulated = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          accumulated += decoder.decode(value, { stream: true })
+          setAiAnswer(accumulated)
+        }
+        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+      })
+      .catch(() => {})
+      .finally(() => { setIsAnalyzing(false); abortRef.current = null })
   }
 
   function clearFilter() {
+    abortRef.current?.abort()
     setQuery('')
     setSubmitted('')
-    setWidgets([])
+    setAiAnswer('')
+    setIsAnalyzing(false)
   }
 
   return (
@@ -427,17 +306,36 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
       </div>
 
       {/* ── Smart Filter Results ── */}
-      {widgets.length > 0 && (
+      {(submitted && (aiAnswer || isAnalyzing)) && (
         <div ref={resultsRef} className="space-y-3">
           <div className="flex items-center gap-2">
             <Sparkles className="size-3.5 text-zinc-500" />
-            <p className="text-sm font-medium">Results for "{submitted}"</p>
-            <span className="text-xs text-muted-foreground">— {widgets.length} widget{widgets.length > 1 ? 's' : ''} generated</span>
+            <p className="text-sm font-medium text-muted-foreground">"{submitted}"</p>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {widgets.map((w, i) => (
-              <SmartWidgetCard key={i} widget={w} onNavigate={onNavigate} spendData={spendChartData} />
-            ))}
+          <div className="bg-white rounded-lg border border-border shadow-sm p-5">
+            <div className="text-sm leading-relaxed text-foreground min-h-[2rem]">
+              {aiAnswer
+                ? renderMarkdown(aiAnswer)
+                : (
+                  <span className="flex gap-1 items-center h-5">
+                    <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
+                    <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
+                    <span className="size-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+                  </span>
+                )
+              }
+            </div>
+            {aiAnswer && (
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1"><Sparkles className="size-3" /> Powered by Claude</span>
+                <button
+                  onClick={() => onNavigate('ai')}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  Continue in AI Insights <ArrowRight className="size-3" />
+                </button>
+              </div>
+            )}
           </div>
           <div className="h-px bg-border" />
         </div>
