@@ -301,7 +301,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
           {view === 'alerts'           && <AlertsView />}
           {view === 'connections'      && <ConnectionsView workspaceId={workspaceId} />}
           {view === 'setup'            && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
-          {view === 'account'          && <AccountView />}
+          {view === 'account'          && <AccountView workspaceId={workspaceId} />}
         </main>
       </SidebarInset>
     </SidebarProvider>

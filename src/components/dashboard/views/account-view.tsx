@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CheckCircle2, AlertTriangle, Eye, EyeOff, Loader2, User, Lock, Mail, Trash2 } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, Eye, EyeOff, Loader2, User, Lock, Mail, Trash2, RefreshCcw } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,7 +54,7 @@ function SectionCard({ icon: Icon, title, description, children }: {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function AccountView() {
+export function AccountView({ workspaceId }: { workspaceId?: string }) {
   const supabase = createClient()
 
   // ── User state ──────────────────────────────────────────────────────────────
@@ -139,6 +139,35 @@ export function AccountView() {
       setNewPassword('')
       setConfirmPassword('')
     }
+  }
+
+  // ── Hard reset data ─────────────────────────────────────────────────────────
+  const [resetConfirm, setResetConfirm]     = useState('')
+  const [resetting, setResetting]           = useState(false)
+  const [resetFeedback, setResetFeedback]   = useState<FeedbackState>(null)
+  const canReset = resetConfirm === 'RESET'
+
+  async function handleHardReset() {
+    if (!canReset || !workspaceId) return
+    setResetting(true)
+    setResetFeedback(null)
+    try {
+      const res = await fetch('/api/workspace/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        setResetFeedback({ type: 'error', message: body.error ?? 'Reset failed. Please try again.' })
+      } else {
+        setResetFeedback({ type: 'success', message: 'All data cleared. Go to Connections and press Sync Now to reload from Snowflake.' })
+        setResetConfirm('')
+      }
+    } catch {
+      setResetFeedback({ type: 'error', message: 'Unexpected error. Please try again.' })
+    }
+    setResetting(false)
   }
 
   // ── Delete account ──────────────────────────────────────────────────────────
@@ -305,6 +334,40 @@ export function AccountView() {
             >
               {savingPassword && <Loader2 className="size-3 mr-1.5 animate-spin" />}
               Update password
+            </Button>
+          </div>
+        </SectionCard>
+
+        {/* ── Hard reset ── */}
+        <SectionCard icon={RefreshCcw} title="Hard reset data" description="Wipe all synced ad data, spend estimates, and brand records from this workspace. Your Snowflake connections are kept. Numbers will return to zero until you sync again.">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reset-confirm" className="text-xs">
+              Type <span className="font-mono font-bold">RESET</span> to confirm
+            </Label>
+            <Input
+              id="reset-confirm"
+              value={resetConfirm}
+              onChange={e => setResetConfirm(e.target.value)}
+              placeholder="RESET"
+              className="h-8 text-sm max-w-sm font-mono"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              All widgets will show empty until you go to Connections and press Sync Now.
+            </p>
+          </div>
+          <Feedback state={resetFeedback} />
+          <div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300"
+              disabled={resetting || !canReset || !workspaceId}
+              onClick={handleHardReset}
+            >
+              {resetting
+                ? <><Loader2 className="size-3 mr-1.5 animate-spin" /> Resetting…</>
+                : <><RefreshCcw className="size-3 mr-1.5" /> Hard reset all data</>
+              }
             </Button>
           </div>
         </SectionCard>
