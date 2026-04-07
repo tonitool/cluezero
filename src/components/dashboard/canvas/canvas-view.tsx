@@ -109,7 +109,7 @@ function NodeShell({ darkIcon, icon: Icon, label, children, actions, selected }:
   useEffect(() => {
     if (!menuOpen) return
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as globalThis.Node)) setMenuOpen(false)
+      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) setMenuOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -733,7 +733,7 @@ export function CanvasView({ workspaceId }: Props) {
   useEffect(() => {
     if (!showLoadPanel) return
     const handler = (e: MouseEvent) => {
-      if (loadPanelRef.current && !loadPanelRef.current.contains(e.target as Node)) setShowLoadPanel(false)
+      if (loadPanelRef.current && !loadPanelRef.current.contains(e.target as HTMLElement)) setShowLoadPanel(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)

@@ -104,25 +104,19 @@ export class WordPressClient {
     const post = await this.getPost(postId)
     const changes: string[] = []
 
-    const updates: Record<string, unknown> = {
-      meta: {},
-    }
+    const meta: Record<string, string> = {}
 
     if (options.metaDescription) {
-      updates.meta = {
-        ...updates.meta,
-        _yoast_wpseo_metadesc: options.metaDescription,
-      }
+      meta._yoast_wpseo_metadesc = options.metaDescription
       changes.push('Updated meta description')
     }
 
     if (options.focusKeyphrase) {
-      updates.meta = {
-        ...updates.meta,
-        _yoast_wpseo_focuskw: options.focusKeyphrase,
-      }
+      meta._yoast_wpseo_focuskw = options.focusKeyphrase
       changes.push('Set focus keyphrase')
     }
+
+    const updates: Record<string, unknown> = { meta }
 
     if (Object.keys(updates.meta as object).length > 0) {
       await this.updatePost(postId, updates)
@@ -147,23 +141,17 @@ export class WordPressClient {
     for (const postId of postIds) {
       try {
         const post = await this.getPost(postId)
-        const updates: Record<string, unknown> = { meta: {} }
+        const meta: Record<string, string> = {}
 
         if (optimizations.metaDescription) {
-          const metaDesc = optimizations.metaDescription(post)
-          updates.meta = {
-            ...updates.meta,
-            _yoast_wpseo_metadesc: metaDesc,
-          }
+          meta._yoast_wpseo_metadesc = optimizations.metaDescription(post)
         }
 
         if (optimizations.focusKeyphrase) {
-          const keyphrase = optimizations.focusKeyphrase(post)
-          updates.meta = {
-            ...updates.meta,
-            _yoast_wpseo_focuskw: keyphrase,
-          }
+          meta._yoast_wpseo_focuskw = optimizations.focusKeyphrase(post)
         }
+
+        const updates: Record<string, unknown> = { meta }
 
         if (Object.keys(updates.meta as object).length > 0) {
           await this.updatePost(postId, updates)
