@@ -276,7 +276,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
             <span className="font-medium text-foreground">{activeItem.label}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            {showWeekSelector && sources.length > 1 && (
+            {showWeekSelector && sources.length > 0 && (
               <Select value={connectionId} onValueChange={setConnectionId}>
                 <SelectTrigger className="h-8 w-[160px] text-xs border-border bg-white">
                   <SelectValue placeholder="All sources" />
