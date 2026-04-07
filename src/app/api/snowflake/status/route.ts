@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       tableName:      c.table_name,
       lastSync:       c.last_synced_at,
       recordCount:    c.last_sync_rows,
-      syncStatus:     c.sync_status,
+      syncStatus:     c.sync_status ?? 'idle',
       syncError:      c.sync_error,
     })),
   })

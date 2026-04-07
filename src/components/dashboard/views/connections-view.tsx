@@ -431,7 +431,7 @@ export function ConnectionsView({ workspaceId }: Props) {
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 px-1">Snowflake</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {sfConnections.map(conn => {
-              const isSyncing = syncing === conn.id
+              const isSyncing = syncing === conn.id || conn.syncStatus === 'syncing'
               const isDisconnecting = disconnecting === conn.id
               const hasError = conn.syncStatus === 'error'
 
