@@ -15,6 +15,8 @@ import {
   Bot,
   LogOut,
   CircleUser,
+  FileText,
+  Table2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -128,7 +130,7 @@ function generateWeeks(n = 4): { value: string; label: string }[] {
 const weeks = generateWeeks(4)
 
 // Views that don't need the week selector
-const WORKSPACE_VIEWS: ViewId[] = ['home', 'connections', 'setup', 'alerts', 'account', 'agents', 'intelligence', 'canvas', 'dashboards']
+const WORKSPACE_VIEWS: ViewId[] = ['connections', 'setup', 'alerts', 'account']
 
 interface Props {
   workspaceId: string
@@ -149,6 +151,8 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
   const [week, setWeek] = useState('w0')
   const [sources, setSources] = useState<SnowflakeSource[]>([])
   const [connectionId, setConnectionId] = useState<string>('all')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [showExport, setShowExport] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -180,6 +184,44 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
       setPendingView(null)
       setTimeout(() => setTransitioning(false), 220)
     }, 480)
+  }
+
+  // Map current view to its primary data API
+  function getExportApiUrl() {
+    const src = connectionId !== 'all' ? `&connectionId=${connectionId}` : ''
+    const base = `workspaceId=${workspaceId}${src}`
+    if (view === 'intelligence') return `/api/data/overview?${base}`
+    if (view === 'canvas')       return `/api/data/overview?${base}`
+    if (view === 'dashboards')   return `/api/data/overview?${base}`
+    return `/api/data/overview?${base}`
+  }
+
+  async function handleExportCSV() {
+    setShowExport(false)
+    try {
+      const res  = await fetch(getExportApiUrl())
+      const data = await res.json()
+      // Use the weekly movement table if available, otherwise fall back to brands list
+      const rows: Record<string, unknown>[] = data.table ?? data.brands?.map((b: string) => ({ brand: b })) ?? []
+      if (rows.length === 0) return
+      const headers = Object.keys(rows[0])
+      const csv = [
+        headers.join(','),
+        ...rows.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(',')),
+      ].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `cluezero-export-${view}-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* ignore */ }
+  }
+
+  function handleExportPDF() {
+    setShowExport(false)
+    window.print()
   }
 
   async function handleSignOut() {
@@ -303,28 +345,51 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
                 </SelectContent>
               </Select>
             )}
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs border-border bg-white">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs border-border bg-white"
+              onClick={() => setRefreshKey(k => k + 1)}>
               <RefreshCcw className="size-3.5" />
               Refresh
             </Button>
-            <Button size="sm" className="h-8 gap-1.5 text-xs">
-              <Download className="size-3.5" />
-              Export
-            </Button>
+            <div className="relative">
+              <Button size="sm" className="h-8 gap-1.5 text-xs"
+                onClick={() => setShowExport(v => !v)}>
+                <Download className="size-3.5" />
+                Export
+              </Button>
+              {showExport && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowExport(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-zinc-200 rounded-xl shadow-xl overflow-hidden z-50">
+                    <button onClick={handleExportCSV}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[11.5px] font-medium text-zinc-700 hover:bg-zinc-50 transition-colors border-b border-zinc-50">
+                      <Table2 className="size-3.5 text-zinc-400" />
+                      Export as CSV
+                    </button>
+                    <button onClick={handleExportPDF}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[11.5px] font-medium text-zinc-700 hover:bg-zinc-50 transition-colors">
+                      <FileText className="size-3.5 text-zinc-400" />
+                      Export as PDF
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
         <main className="p-6 relative">
           <PageLoader visible={transitioning} />
-          {view === 'home'         && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={() => navigateTo('intelligence')} connectionId={connectionId === 'all' ? undefined : connectionId} />}
-          {view === 'intelligence' && <IntelligenceHubView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
-          {view === 'canvas'       && <CanvasView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
-          {view === 'dashboards'   && <DashboardsView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} onNavigate={(v) => navigateTo(v as ViewId)} />}
-          {view === 'agents'       && <AgentsHubView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
-          {view === 'alerts'       && <AlertsView workspaceId={workspaceId} />}
-          {view === 'connections'  && <ConnectionsView workspaceId={workspaceId} />}
-          {view === 'setup'        && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
-          {view === 'account'      && <AccountView workspaceId={workspaceId} />}
+          <div key={`${view}-${refreshKey}`}>
+            {view === 'home'         && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={() => navigateTo('intelligence')} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+            {view === 'intelligence' && <IntelligenceHubView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+            {view === 'canvas'       && <CanvasView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+            {view === 'dashboards'   && <DashboardsView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} onNavigate={(v) => navigateTo(v as ViewId)} />}
+            {view === 'agents'       && <AgentsHubView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+            {view === 'alerts'       && <AlertsView workspaceId={workspaceId} />}
+            {view === 'connections'  && <ConnectionsView workspaceId={workspaceId} />}
+            {view === 'setup'        && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
+            {view === 'account'      && <AccountView workspaceId={workspaceId} />}
+          </div>
         </main>
       </SidebarInset>
     </SidebarProvider>
