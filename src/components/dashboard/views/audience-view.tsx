@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
+import { ChartTooltip, TICK, GRID_H } from '@/components/dashboard/_components/chart-theme'
 import {
   audienceMinAgeDistribution,
   audienceMaxAgeDistribution,
@@ -28,45 +29,25 @@ export function AudienceView() {
 
       {/* Age targeting row */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Min Age Targeting */}
         <ChartCard title="Min Age Targeting" height={260}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={audienceMinAgeDistribution}
-              layout="vertical"
-              margin={{ top: 4, right: 24, bottom: 4, left: 36 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis
-                type="category"
-                dataKey="bucket"
-                tick={{ fontSize: 11 }}
-                width={32}
-              />
-              <Tooltip />
+            <BarChart data={audienceMinAgeDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 36 }}>
+              <CartesianGrid {...GRID_H} />
+              <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="bucket" tick={TICK} tickLine={false} axisLine={false} width={32} />
+              <Tooltip content={(p) => <ChartTooltip {...p} />} />
               <Bar dataKey="ads" fill="#6366F1" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* Max Age Targeting */}
         <ChartCard title="Max Age Targeting" height={260}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={audienceMaxAgeDistribution}
-              layout="vertical"
-              margin={{ top: 4, right: 24, bottom: 4, left: 52 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis
-                type="category"
-                dataKey="bucket"
-                tick={{ fontSize: 11 }}
-                width={48}
-              />
-              <Tooltip />
+            <BarChart data={audienceMaxAgeDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 52 }}>
+              <CartesianGrid {...GRID_H} />
+              <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="bucket" tick={TICK} tickLine={false} axisLine={false} width={48} />
+              <Tooltip content={(p) => <ChartTooltip {...p} />} />
               <Bar dataKey="ads" fill="#0EA5E9" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -75,45 +56,25 @@ export function AudienceView() {
 
       {/* Gender and location row */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-        {/* Gender Distribution */}
         <ChartCard title="Gender Distribution" height={260}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={audienceGenderDistribution}
-              layout="vertical"
-              margin={{ top: 4, right: 24, bottom: 4, left: 88 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis
-                type="category"
-                dataKey="bucket"
-                tick={{ fontSize: 11 }}
-                width={84}
-              />
-              <Tooltip />
+            <BarChart data={audienceGenderDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 88 }}>
+              <CartesianGrid {...GRID_H} />
+              <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="bucket" tick={TICK} tickLine={false} axisLine={false} width={84} />
+              <Tooltip content={(p) => <ChartTooltip {...p} />} />
               <Bar dataKey="ads" fill="#10B981" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        {/* Top 10 Locations */}
         <ChartCard title="Top 10 Locations" height={260}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={targetingLocationTop10}
-              layout="vertical"
-              margin={{ top: 4, right: 24, bottom: 4, left: 68 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis
-                type="category"
-                dataKey="location"
-                tick={{ fontSize: 11 }}
-                width={64}
-              />
-              <Tooltip />
+            <BarChart data={targetingLocationTop10} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 68 }}>
+              <CartesianGrid {...GRID_H} />
+              <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="location" tick={TICK} tickLine={false} axisLine={false} width={64} />
+              <Tooltip content={(p) => <ChartTooltip {...p} />} />
               <Bar dataKey="ads" fill="#F59E0B" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>

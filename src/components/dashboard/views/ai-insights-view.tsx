@@ -50,7 +50,7 @@ function renderMarkdown(text: string) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function AiInsightsView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Props) {
+export function AiInsightsView({ workspaceId, ownBrand = '', connectionId }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',

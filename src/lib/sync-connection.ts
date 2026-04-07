@@ -83,14 +83,16 @@ export async function syncConnection(
       continue
     }
 
-    // Find or create tracked_brand
+    // Find or create tracked_brand — case-insensitive match to avoid creating
+    // duplicates when Snowflake data has inconsistent casing (e.g. "Shell" vs "SHELL").
+    // The first-seen casing wins; user can rename in Setup if needed.
     let brand: { id: string } | null = null
     const { data: existing } = await admin
       .from('tracked_brands')
       .select('id')
       .eq('workspace_id', workspaceId)
-      .eq('name', r.brand)
-      .eq('platform', 'meta')
+      .ilike('name', r.brand)
+      .eq('platform', 'snowflake')
       .maybeSingle()
 
     if (existing?.id) {
@@ -98,7 +100,7 @@ export async function syncConnection(
     } else {
       const { data: brandInserted, error: brandErr } = await admin
         .from('tracked_brands')
-        .insert({ workspace_id: workspaceId, name: r.brand, platform: 'meta', is_own_brand: false })
+        .insert({ workspace_id: workspaceId, name: r.brand, platform: 'snowflake', is_own_brand: false })
         .select('id')
         .single()
       if (brandErr) {

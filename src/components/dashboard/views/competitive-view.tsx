@@ -7,11 +7,12 @@ import {
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS, PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
+import { PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
+import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 
-// Palette for dynamic topics
+// Palette for topic-based charts (not brand-specific)
 const TOPIC_PALETTE = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#E4002B', '#8B5CF6', '#EC4899', '#14B8A6']
-const BRAND_COLOR_VALUES = Object.values(BRAND_COLORS)
 
 function SubSection({ label }: { label: string }) {
   return (
@@ -35,6 +36,13 @@ type CompetitiveData = Record<string, any>
 export function CompetitiveView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<CompetitiveData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  // Re-render when brand colors change in Setup
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -86,13 +94,13 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
             {platformDistributionByAdvertiser.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={platformDistributionByAdvertiser} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
-                  <Tooltip formatter={(value: unknown) => [`${value}%`, undefined] as [string, undefined]} />
-                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="meta" name="Meta" stackId="a" fill={PLATFORM_COLORS.meta} />
-                  <Bar dataKey="google" name="Google" stackId="a" fill={PLATFORM_COLORS.google} />
+                  <CartesianGrid {...GRID_H} />
+                  <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={64} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Bar dataKey="meta"     name="Meta"     stackId="a" fill={PLATFORM_COLORS.meta} />
+                  <Bar dataKey="google"   name="Google"   stackId="a" fill={PLATFORM_COLORS.google} />
                   <Bar dataKey="linkedin" name="LinkedIn" stackId="a" fill={PLATFORM_COLORS.linkedin} radius={[0, 3, 3, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -105,13 +113,13 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
             {platformStrategyComparison.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={platformStrategyComparison} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="segment" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <Tooltip formatter={(value: unknown) => [`${value}%`, undefined] as [string, undefined]} />
-                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="meta" name="Meta" fill={PLATFORM_COLORS.meta} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="google" name="Google" fill={PLATFORM_COLORS.google} radius={[3, 3, 0, 0]} />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="segment" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Bar dataKey="meta"     name="Meta"     fill={PLATFORM_COLORS.meta}     radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="google"   name="Google"   fill={PLATFORM_COLORS.google}   radius={[3, 3, 0, 0]} />
                   <Bar dataKey="linkedin" name="LinkedIn" fill={PLATFORM_COLORS.linkedin} radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -126,13 +134,13 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
             {newAdsByTopic.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={newAdsByTopic} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {topTopicKeys.map((tKey, i) => (
-                    <Line key={tKey} type="monotone" dataKey={tKey} name={tKey.replace(/_/g, ' ')} stroke={topicColorMap[tKey] ?? TOPIC_PALETTE[i % TOPIC_PALETTE.length]} strokeWidth={2} dot={false} />
+                    <Line key={tKey} type="monotone" dataKey={tKey} name={tKey.replace(/_/g, ' ')} stroke={topicColorMap[tKey] ?? TOPIC_PALETTE[i % TOPIC_PALETTE.length]} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -145,13 +153,13 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
             {performanceIndexRanking.length === 0 ? <EmptyState label="No PI data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={performanceIndexRanking} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} domain={[0, 'auto']} />
-                  <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
-                  <Tooltip />
+                  <CartesianGrid {...GRID_H} />
+                  <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} domain={[0, 'auto']} />
+                  <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={64} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Bar dataKey="score" name="PI Score" radius={[0, 3, 3, 0]}>
-                    {performanceIndexRanking.map((entry: { advertiser: string }) => (
-                      <Cell key={entry.advertiser} fill={BRAND_COLORS[entry.advertiser.toLowerCase() as keyof typeof BRAND_COLORS] ?? '#94A3B8'} />
+                    {performanceIndexRanking.map((entry: { advertiser: string }, i: number) => (
+                      <Cell key={entry.advertiser} fill={getBrandColor(entry.advertiser, i)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -168,13 +176,13 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
           {topicDistribution.length === 0 ? <EmptyState label="No topic data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topicDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 80 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="topic" tick={{ fontSize: 11 }} width={76} />
-                <Tooltip />
+                <CartesianGrid {...GRID_H} />
+                <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="topic" tick={TICK} tickLine={false} axisLine={false} width={76} />
+                <Tooltip content={(p) => <ChartTooltip {...p} />} />
                 <Bar dataKey="totalAds" radius={[0, 4, 4, 0]}>
                   {topicDistribution.map((_: unknown, index: number) => (
-                    <Cell key={`cell-${index}`} fill={BRAND_COLOR_VALUES[index % BRAND_COLOR_VALUES.length]} />
+                    <Cell key={`cell-${index}`} fill={TOPIC_PALETTE[index % TOPIC_PALETTE.length]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -186,11 +194,11 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
           {topicByAdvertiser.length === 0 ? <EmptyState label="No topic data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topicByAdvertiser} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 64 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} width={60} />
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <CartesianGrid {...GRID_H} />
+                <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={60} />
+                <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                 {topTopicKeys.map((tKey, i) => (
                   <Bar key={tKey} dataKey={tKey} name={tKey.replace(/_/g, ' ')} stackId="a" fill={TOPIC_PALETTE[i % TOPIC_PALETTE.length]} radius={i === topTopicKeys.length - 1 ? [0, 4, 4, 0] : undefined} />
                 ))}
@@ -204,13 +212,13 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
         {newAdsByTopic.length === 0 ? <EmptyState label="No topic data" /> : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={newAdsByTopic} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <CartesianGrid {...GRID} />
+              <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+              <YAxis tick={TICK} tickLine={false} axisLine={false} />
+              <Tooltip content={(p) => <ChartTooltip {...p} />} />
+              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
               {topTopicKeys.map((tKey, i) => (
-                <Line key={tKey} type="monotone" dataKey={tKey} name={tKey.replace(/_/g, ' ')} stroke={topicColorMap[tKey] ?? TOPIC_PALETTE[i % TOPIC_PALETTE.length]} strokeWidth={2} dot={false} />
+                <Line key={tKey} type="monotone" dataKey={tKey} name={tKey.replace(/_/g, ' ')} stroke={topicColorMap[tKey] ?? TOPIC_PALETTE[i % TOPIC_PALETTE.length]} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
               ))}
             </LineChart>
           </ResponsiveContainer>

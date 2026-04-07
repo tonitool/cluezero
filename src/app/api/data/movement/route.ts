@@ -28,6 +28,14 @@ export async function GET(req: NextRequest) {
 
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Load own_brand for PI trend labeling
+  const { data: ws } = await admin
+    .from('workspaces')
+    .select('own_brand')
+    .eq('id', workspaceId)
+    .single()
+  const ownBrand = (ws?.own_brand ?? '').toLowerCase().replace(/[\s\-_]/g, '')
+
   // Query ads + spend estimates + brand names directly (bypass weekly_metrics)
   let adsQuery = admin
     .from('ads')
@@ -148,6 +156,29 @@ export async function GET(req: NextRequest) {
   const totalSpend = brands.reduce((s, b) => s + (byBrandWeek[b]?.[latestWeek]?.spend ?? 0), 0)
   const totalReach = brands.reduce((s, b) => s + (byBrandWeek[b]?.[latestWeek]?.reach ?? 0), 0)
 
+  // Performance Index trend: own brand vs market average per week
+  // Match own brand by fuzzy key (same as brandKey logic)
+  function brandKey(name: string) {
+    return name.toLowerCase().replace(/[\s\-_]/g, '')
+  }
+  const ownBrandFull = brands.find(b => brandKey(b).includes(ownBrand) || ownBrand.includes(brandKey(b))) ?? brands[0]
+
+  const performanceTrend = sortedWeeks.map(week => {
+    // Own brand avg PI this week
+    const ownScores = byBrandWeek[ownBrandFull]?.[week]?.piScores ?? []
+    const ownAvg = ownScores.length > 0
+      ? Math.round(ownScores.reduce((s, v) => s + v, 0) / ownScores.length * 10) / 10
+      : null
+
+    // Market avg PI this week (all brands)
+    const allScores = brands.flatMap(b => byBrandWeek[b]?.[week]?.piScores ?? [])
+    const marketAvg = allScores.length > 0
+      ? Math.round(allScores.reduce((s, v) => s + v, 0) / allScores.length * 10) / 10
+      : null
+
+    return { week: formatWeek(week), orlen: ownAvg, market: marketAvg }
+  }).filter(p => p.orlen !== null || p.market !== null)
+
   return NextResponse.json({
     hasData: true,
     kpis: { totalWeeklySpend: Math.round(totalSpend), totalWeeklyReach: Math.round(totalReach) },
@@ -155,6 +186,7 @@ export async function GET(req: NextRequest) {
     newAdsTrend,
     newVsExisting,
     table,
+    performanceTrend,
   })
 }
 

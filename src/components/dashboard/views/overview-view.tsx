@@ -8,12 +8,22 @@ import {
 import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
+import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtCurrency, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 
-const BRAND_ENTRIES = Object.entries(BRAND_COLORS) as [string, string][]
+// Re-render when brand colors change in Setup
+function useBrandColorTick() {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const h = () => setTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
+  return tick
+}
 
 function SubSection({ label }: { label: string }) {
   return (
@@ -39,6 +49,7 @@ type OverviewData = Record<string, any>
 export function OverviewView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  useBrandColorTick() // forces re-render when colors change
 
   useEffect(() => {
     if (!workspaceId) return
@@ -63,15 +74,16 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
     </div>
   )
 
-  const executiveMetrics        = data?.executiveMetrics        ?? []
-  const weeklySpendMovement     = data?.weeklySpendMovement     ?? []
-  const spendShareTrend         = data?.spendShareTrend         ?? []
-  const weeklyMovementMetrics   = data?.weeklyMovementMetrics   ?? []
+  const executiveMetrics          = data?.executiveMetrics          ?? []
+  const weeklySpendMovement       = data?.weeklySpendMovement       ?? []
+  const spendShareTrend           = data?.spendShareTrend           ?? []
+  const weeklyMovementMetrics     = data?.weeklyMovementMetrics     ?? []
   const newVsExistingByAdvertiser = data?.newVsExistingByAdvertiser ?? []
-  const newAdsTrend             = data?.newAdsTrend             ?? []
-  const performanceTrend        = data?.performanceTrend        ?? []
-  const weeklyMovementTable     = data?.table                   ?? []
-  const activeBrands: string[]  = data?.brands                 ?? BRAND_ENTRIES.map(([k]) => k)
+  const newAdsTrend               = data?.newAdsTrend               ?? []
+  const performanceTrend          = data?.performanceTrend          ?? []
+  const weeklyMovementTable       = data?.table                     ?? []
+  const activeBrands: string[]               = data?.brands     ?? []
+  const brandNames: Record<string, string>   = data?.brandNames ?? {}
 
   return (
     <div>
@@ -98,13 +110,13 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
             {weeklySpendMovement.length === 0 ? <EmptyState label="No spend data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={weeklySpendMovement} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: unknown) => [`€${Number(value).toLocaleString()}`, undefined] as [string, undefined]} />
-                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtCurrency} />} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {activeBrands.map((bKey, i) => (
-                    <Bar key={bKey} dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stackId="a" fill={BRAND_COLORS[bKey] ?? `hsl(${i * 60},70%,50%)`} radius={i === activeBrands.length - 1 ? [3, 3, 0, 0] : undefined} />
+                    <Bar key={bKey} dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stackId="a" fill={getBrandColor(brandNames[bKey] ?? bKey, i)} radius={i === activeBrands.length - 1 ? [3, 3, 0, 0] : undefined} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -117,13 +129,13 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
             {spendShareTrend.length === 0 ? <EmptyState label="No spend data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={spendShareTrend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip formatter={(value: unknown) => [`${value}%`, undefined] as [string, undefined]} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {activeBrands.map((bKey, i) => (
-                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={BRAND_COLORS[bKey] ?? `hsl(${i * 60},70%,50%)`} strokeWidth={2} dot={false} />
+                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={getBrandColor(brandNames[bKey] ?? bKey, i)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -146,11 +158,11 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
             {newVsExistingByAdvertiser.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={newVsExistingByAdvertiser} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <YAxis type="category" dataKey="advertiser" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={64} />
-                  <Tooltip formatter={(value: unknown) => [`${value}%`, undefined] as [string, undefined]} />
-                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID_H} />
+                  <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={64} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   <Bar dataKey="newAdsPct" name="New" stackId="a" fill="#6366F1" />
                   <Bar dataKey="existingAdsPct" name="Existing" stackId="a" fill="#E2E8F0" radius={[0, 3, 3, 0]} />
                 </BarChart>
@@ -164,13 +176,13 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
             {newAdsTrend.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={newAdsTrend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {activeBrands.map((bKey, i) => (
-                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={BRAND_COLORS[bKey] ?? `hsl(${i * 60},70%,50%)`} strokeWidth={2} dot={false} />
+                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={getBrandColor(brandNames[bKey] ?? bKey, i)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -185,20 +197,20 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
             {performanceTrend.length === 0 ? <EmptyState label="No PI data" /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={performanceTrend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="week" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                  <Tooltip />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={BRAND_COLORS.orlen} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={getBrandColor('orlen', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                  <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
                 </LineChart>
               </ResponsiveContainer>
             )}
           </div>
         </ChartCard>
 
-        <div className="bg-white rounded-lg border border-border shadow-sm p-5">
+        <div className="bg-white rounded-xl border border-border shadow-sm p-5 transition-shadow hover:shadow-md">
           <p className="text-sm font-semibold leading-tight mb-4">Weekly Movement Details</p>
           {weeklyMovementTable.length === 0 ? (
             <p className="text-xs text-muted-foreground">No data available.</p>
