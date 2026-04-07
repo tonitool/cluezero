@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { refreshGoogleToken, getCampaignPerformance as getGoogleCampaigns, getTopAds as getGoogleTopAds } from '@/lib/google-ads'
+import { getMetaCampaignPerformance, getMetaTopAds } from '@/lib/meta-ads'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -52,6 +54,33 @@ const TOOLS = [
     input_schema: {
       type: 'object' as const,
       properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_own_campaign_performance',
+    description:
+      'Fetch the client\'s own live campaign performance from their connected Google Ads or Meta Ads account — real spend, clicks, CTR, ROAS, and conversions. Use this when the user asks about their own campaigns, budget, or ad account performance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        platform: { type: 'string', enum: ['google_ads', 'meta_ads', 'all'], description: 'Which platform to pull from (default: all)' },
+        days:     { type: 'number', description: 'Lookback window in days (default 30)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_own_top_ads',
+    description:
+      'Get the client\'s top performing ads from their connected Google Ads or Meta Ads account, ranked by clicks. Includes ad name/headline, spend, CTR, and conversions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        platform: { type: 'string', enum: ['google_ads', 'meta_ads', 'all'], description: 'Which platform (default: all)' },
+        days:     { type: 'number', description: 'Lookback window in days (default 30)' },
+        limit:    { type: 'number', description: 'Number of ads to return (default 5, max 10)' },
+      },
       required: [],
     },
   },
@@ -395,6 +424,186 @@ async function toolCompareBrands(admin: AdminClient, workspaceId: string, brandN
   ].join('\n')
 }
 
+// ── Tool: get_own_campaign_performance ────────────────────────────────────────
+
+interface AdConnection {
+  id: string
+  platform: 'google_ads' | 'meta_ads'
+  account_id: string
+  account_name: string
+  access_token: string
+  refresh_token: string | null
+  token_expires_at: string | null
+  status: string
+}
+
+async function toolOwnCampaigns(
+  admin: AdminClient,
+  workspaceId: string,
+  platform = 'all',
+  days = 30,
+): Promise<string> {
+  const { data: conns } = await admin
+    .from('ad_platform_connections')
+    .select('id, platform, account_id, account_name, access_token, refresh_token, token_expires_at, status')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active')
+
+  const connections: AdConnection[] = conns ?? []
+  if (!connections.length) {
+    return 'No ad platform accounts connected. Ask the user to connect their Google Ads or Meta Ads account in the Connections section.'
+  }
+
+  const filtered = platform === 'all' ? connections : connections.filter(c => c.platform === platform)
+  if (!filtered.length) return `No connected ${platform} account found.`
+
+  const sections: string[] = []
+
+  for (const conn of filtered) {
+    try {
+      let token = conn.access_token
+
+      // Refresh Google token if needed
+      if (conn.platform === 'google_ads' && conn.refresh_token) {
+        const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at) : null
+        if (!expiresAt || expiresAt < new Date(Date.now() + 5 * 60 * 1000)) {
+          const refreshed = await refreshGoogleToken(conn.refresh_token)
+          if (refreshed) {
+            token = refreshed.accessToken
+            await admin.from('ad_platform_connections').update({
+              access_token: refreshed.accessToken,
+              token_expires_at: refreshed.expiresAt,
+            }).eq('id', conn.id)
+          }
+        }
+      }
+
+      if (conn.platform === 'google_ads') {
+        const campaigns = await getGoogleCampaigns(conn.account_id.replace(/-/g, ''), token, days)
+        if (!campaigns.length) {
+          sections.push(`Google Ads (${conn.account_name}): No active campaigns in last ${days} days.`)
+          continue
+        }
+        const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0)
+        const totalConvs  = campaigns.reduce((s, c) => s + c.conversions, 0)
+        const totalClicks = campaigns.reduce((s, c) => s + c.clicks, 0)
+        const totalImpr   = campaigns.reduce((s, c) => s + c.impressions, 0)
+        const avgRoas     = campaigns.filter(c => c.roas).map(c => c.roas!).reduce((s, r) => s + r, 0) / campaigns.filter(c => c.roas).length || null
+
+        const lines = campaigns.slice(0, 5).map(c =>
+          `  - ${c.campaignName} [${c.status}]: €${c.spend.toFixed(2)} spend, ${c.clicks} clicks, CTR ${(c.ctr * 100).toFixed(2)}%, ${c.conversions} conv, ROAS ${c.roas?.toFixed(2) ?? 'N/A'}`
+        )
+        sections.push([
+          `Google Ads — ${conn.account_name} (last ${days} days):`,
+          `  Total spend: €${totalSpend.toFixed(2)} | Clicks: ${totalClicks.toLocaleString()} | Impressions: ${totalImpr.toLocaleString()} | Conversions: ${totalConvs} | Avg ROAS: ${avgRoas?.toFixed(2) ?? 'N/A'}`,
+          `  Top campaigns:`,
+          ...lines,
+        ].join('\n'))
+
+      } else if (conn.platform === 'meta_ads') {
+        const campaigns = await getMetaCampaignPerformance(conn.account_id, token, days)
+        if (!campaigns.length) {
+          sections.push(`Meta Ads (${conn.account_name}): No active campaigns in last ${days} days.`)
+          continue
+        }
+        const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0)
+        const totalConvs  = campaigns.reduce((s, c) => s + c.conversions, 0)
+        const totalClicks = campaigns.reduce((s, c) => s + c.clicks, 0)
+        const totalReach  = campaigns.reduce((s, c) => s + c.reach, 0)
+        const avgRoas     = campaigns.filter(c => c.roas).map(c => c.roas!).reduce((s, r) => s + r, 0) / campaigns.filter(c => c.roas).length || null
+
+        const lines = campaigns.slice(0, 5).map(c =>
+          `  - ${c.campaignName} [${c.status}]: $${c.spend.toFixed(2)} spend, ${c.clicks} clicks, CTR ${(c.ctr * 100).toFixed(2)}%, reach ${c.reach.toLocaleString()}, ${c.conversions} conv, ROAS ${c.roas?.toFixed(2) ?? 'N/A'}`
+        )
+        sections.push([
+          `Meta Ads — ${conn.account_name} (last ${days} days):`,
+          `  Total spend: $${totalSpend.toFixed(2)} | Clicks: ${totalClicks.toLocaleString()} | Reach: ${totalReach.toLocaleString()} | Conversions: ${totalConvs} | Avg ROAS: ${avgRoas?.toFixed(2) ?? 'N/A'}`,
+          `  Top campaigns:`,
+          ...lines,
+        ].join('\n'))
+      }
+    } catch (err) {
+      sections.push(`${conn.platform} (${conn.account_name}): Error fetching data — ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  return sections.join('\n\n') || 'No campaign data found.'
+}
+
+// ── Tool: get_own_top_ads ─────────────────────────────────────────────────────
+
+async function toolOwnTopAds(
+  admin: AdminClient,
+  workspaceId: string,
+  platform = 'all',
+  days = 30,
+  limit = 5,
+): Promise<string> {
+  const { data: conns } = await admin
+    .from('ad_platform_connections')
+    .select('id, platform, account_id, account_name, access_token, refresh_token, token_expires_at, status')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'active')
+
+  const connections: AdConnection[] = conns ?? []
+  if (!connections.length) {
+    return 'No ad platform accounts connected. Ask the user to connect their Google Ads or Meta Ads account in the Connections section.'
+  }
+
+  const filtered = platform === 'all' ? connections : connections.filter(c => c.platform === platform)
+  if (!filtered.length) return `No connected ${platform} account found.`
+
+  const sections: string[] = []
+  const cap = Math.min(limit, 10)
+
+  for (const conn of filtered) {
+    try {
+      let token = conn.access_token
+
+      if (conn.platform === 'google_ads' && conn.refresh_token) {
+        const expiresAt = conn.token_expires_at ? new Date(conn.token_expires_at) : null
+        if (!expiresAt || expiresAt < new Date(Date.now() + 5 * 60 * 1000)) {
+          const refreshed = await refreshGoogleToken(conn.refresh_token)
+          if (refreshed) {
+            token = refreshed.accessToken
+            await admin.from('ad_platform_connections').update({
+              access_token: refreshed.accessToken,
+              token_expires_at: refreshed.expiresAt,
+            }).eq('id', conn.id)
+          }
+        }
+      }
+
+      if (conn.platform === 'google_ads') {
+        const ads = await getGoogleTopAds(conn.account_id.replace(/-/g, ''), token, days, cap)
+        if (!ads.length) {
+          sections.push(`Google Ads (${conn.account_name}): No ad data.`)
+          continue
+        }
+        const lines = ads.map((a, i) =>
+          `  ${i + 1}. "${a.headline}" — ${a.campaignName} | ${a.clicks} clicks, CTR ${(a.ctr * 100).toFixed(2)}%, €${a.spend.toFixed(2)} spend, ${a.conversions} conv`
+        )
+        sections.push([`Google Ads top ${ads.length} ads — ${conn.account_name}:`, ...lines].join('\n'))
+
+      } else if (conn.platform === 'meta_ads') {
+        const ads = await getMetaTopAds(conn.account_id, token, days, cap)
+        if (!ads.length) {
+          sections.push(`Meta Ads (${conn.account_name}): No ad data.`)
+          continue
+        }
+        const lines = ads.map((a, i) =>
+          `  ${i + 1}. "${a.adName}" — ${a.campaignName} | ${a.clicks} clicks, CTR ${(a.ctr * 100).toFixed(2)}%, $${a.spend.toFixed(2)} spend, ${a.conversions} conv`
+        )
+        sections.push([`Meta Ads top ${ads.length} ads — ${conn.account_name}:`, ...lines].join('\n'))
+      }
+    } catch (err) {
+      sections.push(`${conn.platform} (${conn.account_name}): Error — ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  return sections.join('\n\n') || 'No ad data found.'
+}
+
 // ─── Execute a tool call ──────────────────────────────────────────────────────
 
 async function executeTool(
@@ -423,6 +632,17 @@ async function executeTool(
         return await toolWhitespace(admin, workspaceId, ownBrand, connectionId)
       case 'compare_brands':
         return await toolCompareBrands(admin, workspaceId, (input.brands as string[]) ?? [], connectionId)
+      case 'get_own_campaign_performance':
+        return await toolOwnCampaigns(admin, workspaceId,
+          input.platform ? String(input.platform) : 'all',
+          input.days     ? Number(input.days)     : 30,
+        )
+      case 'get_own_top_ads':
+        return await toolOwnTopAds(admin, workspaceId,
+          input.platform ? String(input.platform) : 'all',
+          input.days     ? Number(input.days)     : 30,
+          input.limit    ? Number(input.limit)    : 5,
+        )
       default:
         return `Unknown tool: ${name}`
     }

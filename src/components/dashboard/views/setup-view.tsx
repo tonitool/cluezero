@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Check, Loader2, AlertCircle, Sparkles } from 'lucide-react'
+import { Plus, Check, Loader2, AlertCircle, Sparkles, X, Trash2, Database, Shuffle } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,13 +16,78 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { trackedBrands } from '@/components/dashboard/mock-data'
 import { cn } from '@/lib/utils'
+import { setBrandColors as cacheBrandColors, RANDOM_PALETTE } from '@/lib/brand-colors'
 
 const PLATFORM_COLORS: Record<string, string> = {
   Meta:     '#1877F2',
   Google:   '#34A853',
   LinkedIn: '#0A66C2',
+}
+
+// ── Color picker swatches ─────────────────────────────────────────────────────
+
+const COLOR_SWATCHES = [
+  '#E4002B','#DC2626','#EF4444','#F97316','#E11D48',
+  '#EC6B1E','#F59E0B','#FBCE07','#D97706','#EAB308',
+  '#10B981','#22C55E','#059669','#16A34A','#15803D',
+  '#0066B2','#3B82F6','#0EA5E9','#003087','#1877F2',
+  '#6366F1','#8B5CF6','#5C5C5C','#71717A','#18181B',
+]
+
+function ColorPicker({ color, onChange }: { color: string; onChange: (c: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [hex,  setHex]  = useState(color)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setHex(color) }, [color])
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  function apply(c: string) { onChange(c); setHex(c); setOpen(false) }
+
+  function handleHexInput(val: string) {
+    setHex(val)
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) onChange(val)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="size-5 rounded-full border-2 border-white shadow ring-1 ring-zinc-200 hover:ring-zinc-400 transition-all shrink-0"
+        style={{ background: color }}
+        title="Change color"
+      />
+      {open && (
+        <div className="absolute left-0 top-7 z-50 bg-white border border-zinc-200 rounded-2xl shadow-xl p-3 w-[172px]">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-2">Pick a color</p>
+          <div className="grid grid-cols-5 gap-1.5 mb-3">
+            {COLOR_SWATCHES.map(c => (
+              <button key={c} onClick={() => apply(c)}
+                className={cn('size-6 rounded-full border-2 transition-transform hover:scale-110',
+                  color === c ? 'border-zinc-900 scale-110' : 'border-white shadow ring-1 ring-zinc-100')}
+                style={{ background: c }} />
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="size-5 rounded-full shrink-0 border border-zinc-200" style={{ background: hex }} />
+            <input
+              value={hex}
+              onChange={e => handleHexInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') apply(hex) }}
+              placeholder="#000000"
+              className="flex-1 h-7 text-[11px] rounded-lg border border-zinc-200 px-2 focus:outline-none focus:ring-1 focus:ring-zinc-400 font-mono"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function SectionCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -46,7 +111,26 @@ interface Props {
 
 export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand: initialOwnBrand = '' }: Props) {
   const router = useRouter()
-  const [brands, setBrands] = useState(trackedBrands)
+  // ── Brand colors ─────────────────────────────────────────────────────────────
+  interface BrandEntry { name: string; platforms: string[]; isOwn: boolean; color: string | null; source: 'sync' | 'manual' }
+  const [brands,        setBrands]           = useState<BrandEntry[]>([])
+  const [brandColors,   setBrandColorsState] = useState<Record<string, string>>({})
+  const [brandsLoading, setBrandsLoading]    = useState(true)
+  const [colorsSaving,  setColorsSaving]     = useState(false)
+  // Add brand form
+  const [showAddForm,   setShowAddForm]   = useState(false)
+  const [newBrandName,  setNewBrandName]  = useState('')
+  const [newBrandColor, setNewBrandColor] = useState(COLOR_SWATCHES[0])
+  const [addingBrand,   setAddingBrand]   = useState(false)
+  const [addError,      setAddError]      = useState<string | null>(null)
+  // Delete
+  const [deletingBrand,  setDeletingBrand]  = useState<string | null>(null)
+  const [randomizing,    setRandomizing]    = useState(false)
+  // Rename
+  const [renamingBrand,  setRenamingBrand]  = useState<string | null>(null)
+  const [renameValue,    setRenameValue]    = useState('')
+  const [renameSaving,   setRenameSaving]   = useState(false)
+  const addInputRef = useRef<HTMLInputElement>(null)
   const [refreshCadence, setRefreshCadence] = useState('daily')
   const [aiEnrichment, setAiEnrichment] = useState(true)
   const [spendModel, setSpendModel] = useState('cpm')
@@ -69,6 +153,118 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
   const [profileLoaded,     setProfileLoaded]       = useState(false)
   const [savingProfile,     setSavingProfile]       = useState(false)
   const [profileFeedback,   setProfileFeedback]     = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Load brands from DB
+  useEffect(() => {
+    if (!workspaceId) return
+    fetch(`/api/brands?workspaceId=${workspaceId}`)
+      .then(r => r.json())
+      .then(d => {
+        setBrands(d.brands ?? [])
+        const colors = d.savedColors ?? {}
+        setBrandColorsState(colors)
+        cacheBrandColors(workspaceId, colors)
+      })
+      .catch(() => {})
+      .finally(() => setBrandsLoading(false))
+  }, [workspaceId])
+
+  async function saveBrandColor(brandName: string, color: string) {
+    const next = { ...brandColors, [brandName]: color }
+    setBrandColorsState(next)
+    cacheBrandColors(workspaceId, next)
+    setColorsSaving(true)
+    await fetch('/api/workspace/colors', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId, brandColors: next }),
+    }).finally(() => setColorsSaving(false))
+  }
+
+  // Focus the name input when the add form opens
+  useEffect(() => {
+    if (showAddForm) setTimeout(() => addInputRef.current?.focus(), 50)
+  }, [showAddForm])
+
+  async function handleAddBrand() {
+    const name = newBrandName.trim()
+    if (!name) return
+    setAddingBrand(true)
+    setAddError(null)
+    const res  = await fetch('/api/brands', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ workspaceId, name, color: newBrandColor }),
+    })
+    const data = await res.json()
+    setAddingBrand(false)
+    if (!res.ok) {
+      setAddError(data.error ?? 'Could not add brand.')
+      return
+    }
+    // Add to local list and update color cache
+    setBrands(prev => [...prev, data.brand].sort((a, b) => a.name.localeCompare(b.name)))
+    const next = { ...brandColors, [name]: newBrandColor }
+    setBrandColorsState(next)
+    cacheBrandColors(workspaceId, next)
+    // Reset form
+    setNewBrandName('')
+    setNewBrandColor(COLOR_SWATCHES[Math.floor(Math.random() * COLOR_SWATCHES.length)])
+    setShowAddForm(false)
+  }
+
+  async function handleDeleteBrand(name: string) {
+    setDeletingBrand(name)
+    await fetch(`/api/brands?workspaceId=${encodeURIComponent(workspaceId)}&name=${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    })
+    setBrands(prev => prev.filter(b => b.name !== name))
+    const next = { ...brandColors }
+    delete next[name]
+    setBrandColorsState(next)
+    cacheBrandColors(workspaceId, next)
+    setDeletingBrand(null)
+  }
+
+  async function handleRenameBrand(oldName: string, newName: string) {
+    newName = newName.trim()
+    if (!newName || newName === oldName) { setRenamingBrand(null); return }
+    setRenameSaving(true)
+    await fetch('/api/brands', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId, oldName, newName }),
+    })
+    // Update local state
+    setBrands(prev => prev.map(b => b.name === oldName ? { ...b, name: newName } : b))
+    const next = { ...brandColors }
+    if (next[oldName] !== undefined) {
+      next[newName] = next[oldName]
+      delete next[oldName]
+    }
+    setBrandColorsState(next)
+    cacheBrandColors(workspaceId, next)
+    setRenamingBrand(null)
+    setRenameSaving(false)
+  }
+
+  async function handleRandomize() {
+    if (brands.length === 0 || randomizing) return
+    setRandomizing(true)
+    // Fisher-Yates shuffle then assign one color per brand
+    const pool = [...RANDOM_PALETTE].sort(() => Math.random() - 0.5)
+    const next: Record<string, string> = { ...brandColors }
+    brands.forEach((brand, i) => {
+      next[brand.name] = pool[i % pool.length]
+    })
+    setBrandColorsState(next)
+    cacheBrandColors(workspaceId, next)
+    await fetch('/api/workspace/colors', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId, brandColors: next }),
+    }).finally(() => setRandomizing(false))
+  }
 
   useEffect(() => {
     if (!workspaceId) return
@@ -144,21 +340,6 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
   }
 
   const wsChanged = wsName !== workspaceName || wsSlug !== workspaceSlug
-
-  function toggleBrand(id: string) {
-    setBrands(prev => prev.map(b => b.id === id ? { ...b, active: !b.active } : b))
-  }
-
-  function togglePlatform(brandId: string, platform: 'Meta' | 'Google' | 'LinkedIn') {
-    setBrands(prev => prev.map(b => {
-      if (b.id !== brandId) return b
-      const has = b.platforms.includes(platform)
-      return {
-        ...b,
-        platforms: has ? b.platforms.filter(p => p !== platform) : [...b.platforms, platform]
-      }
-    }))
-  }
 
   function handleSave() {
     setSaved(true)
@@ -364,75 +545,219 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Tracked brands - takes 2 cols */}
         <div className="xl:col-span-2">
-          <SectionCard
-            title="Tracked Brands"
-            description="Select which competitors to monitor. Toggle active/inactive without losing configuration."
-          >
-            <div className="space-y-2">
-              {brands.map((brand) => (
-                <div
-                  key={brand.id}
+          <div className="bg-white rounded-lg border border-border shadow-sm p-5">
+
+            {/* ── Section header ── */}
+            <div className="flex items-start justify-between mb-4 gap-3">
+              <div>
+                <p className="text-sm font-semibold">Tracked Brands</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Competitors and your own brand. Auto-imported from syncs — or add manually and match later.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Randomize colors */}
+                <button
+                  onClick={handleRandomize}
+                  disabled={randomizing || brands.length === 0}
+                  title="Randomize all brand colors"
+                  className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 disabled:opacity-40 transition-colors"
+                >
+                  {randomizing
+                    ? <Loader2 className="size-3 animate-spin" />
+                    : <Shuffle className="size-3" />
+                  }
+                  Randomize
+                </button>
+
+                {/* Add brand */}
+                <button
+                  onClick={() => { setShowAddForm(v => !v); setAddError(null) }}
                   className={cn(
-                    'flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors',
-                    brand.active ? 'border-border bg-zinc-50/50' : 'border-dashed border-zinc-200 bg-white opacity-60'
+                    'flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg border transition-colors',
+                    showAddForm
+                      ? 'bg-zinc-900 text-white border-zinc-900'
+                      : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'
                   )}
                 >
-                  {/* Color dot */}
-                  <div className="size-3 rounded-full shrink-0" style={{ backgroundColor: brand.color }} />
+                  {showAddForm ? <X className="size-3" /> : <Plus className="size-3" />}
+                  {showAddForm ? 'Cancel' : 'Add brand'}
+                </button>
+              </div>
+            </div>
 
-                  {/* Brand name */}
-                  <span className="text-sm font-medium w-28 shrink-0">{brand.name}</span>
-
-                  {/* Platform toggles */}
-                  <div className="flex items-center gap-1.5 flex-1">
-                    {(['Meta', 'Google', 'LinkedIn'] as const).map(p => {
-                      const on = brand.platforms.includes(p)
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => brand.active && togglePlatform(brand.id, p)}
-                          className={cn(
-                            'text-[10px] font-semibold px-2 py-0.5 rounded border transition-colors',
-                            on
-                              ? 'border-transparent text-white'
-                              : 'border-zinc-200 text-zinc-400 bg-white',
-                            !brand.active && 'cursor-not-allowed'
-                          )}
-                          style={on ? { backgroundColor: PLATFORM_COLORS[p] } : {}}
-                        >
-                          {p}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-medium tabular-nums">{brand.adsTracked.toLocaleString()} ads</p>
-                    <p className="text-[10px] text-muted-foreground">last seen {brand.lastSeen}</p>
-                  </div>
-
-                  {/* Toggle active */}
+            {/* ── Add brand inline form ── */}
+            {showAddForm && (
+              <div className="mb-3 p-3 rounded-xl border border-zinc-200 bg-zinc-50/60">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-2.5">New brand</p>
+                <div className="flex items-center gap-2.5">
+                  <ColorPicker color={newBrandColor} onChange={setNewBrandColor} />
+                  <input
+                    ref={addInputRef}
+                    value={newBrandName}
+                    onChange={e => { setNewBrandName(e.target.value); setAddError(null) }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddBrand(); if (e.key === 'Escape') setShowAddForm(false) }}
+                    placeholder="Brand name (e.g. Shell, Nike, Volkswagen)"
+                    className="flex-1 h-8 text-sm rounded-lg border border-zinc-200 px-3 bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400"
+                  />
                   <button
-                    onClick={() => toggleBrand(brand.id)}
-                    className={cn(
-                      'ml-2 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-colors shrink-0',
-                      brand.active
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                        : 'bg-zinc-50 text-zinc-400 border-zinc-200 hover:bg-zinc-100'
-                    )}
+                    onClick={handleAddBrand}
+                    disabled={addingBrand || !newBrandName.trim()}
+                    className="h-8 px-3.5 rounded-lg bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-800 disabled:opacity-40 transition-colors flex items-center gap-1.5"
                   >
-                    {brand.active ? 'Active' : 'Inactive'}
+                    {addingBrand ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                    Add
                   </button>
                 </div>
-              ))}
+                {addError && (
+                  <p className="mt-2 text-[11px] text-rose-500 flex items-center gap-1.5">
+                    <AlertCircle className="size-3 shrink-0" /> {addError}
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-zinc-400">
+                  If this brand name matches data in a future sync, it will be linked automatically.
+                </p>
+              </div>
+            )}
 
-              <button className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground mt-1 px-4 py-2 rounded-lg border border-dashed border-zinc-200 w-full hover:border-zinc-300 transition-colors">
-                <Plus className="size-3.5" />
-                Add brand to track
-              </button>
+            {/* ── Saving indicator ── */}
+            {colorsSaving && (
+              <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mb-2">
+                <Loader2 className="size-3 animate-spin" /> Saving color…
+              </div>
+            )}
+
+            {/* ── Brand list ── */}
+            <div className="space-y-1.5">
+              {brandsLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-11 rounded-xl bg-zinc-100 animate-pulse" />
+                ))
+              ) : brands.length === 0 ? (
+                <div className="py-10 flex flex-col items-center gap-3 text-center">
+                  <div className="size-10 rounded-2xl border-2 border-dashed border-zinc-200 flex items-center justify-center">
+                    <Database className="size-4 text-zinc-300" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-zinc-500">No brands yet</p>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Add one manually above, or connect a data source and run a sync.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                brands.map(brand => {
+                  const currentColor = brandColors[brand.name] ?? brand.color ?? '#94a3b8'
+                  const isDeleting   = deletingBrand === brand.name
+                  const isRenaming   = renamingBrand === brand.name
+                  return (
+                    <div
+                      key={brand.name}
+                      className={cn(
+                        'group flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/50 px-4 py-2.5 transition-colors',
+                        isDeleting ? 'opacity-50' : 'hover:border-zinc-200 hover:bg-zinc-50'
+                      )}
+                    >
+                      {/* Editable color dot */}
+                      <ColorPicker color={currentColor} onChange={c => saveBrandColor(brand.name, c)} />
+
+                      {/* Brand name — inline rename input or plain text */}
+                      <span className="text-sm font-medium flex-1 min-w-0 flex items-center gap-2">
+                        {isRenaming ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onBlur={() => handleRenameBrand(brand.name, renameValue)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleRenameBrand(brand.name, renameValue)
+                              if (e.key === 'Escape') setRenamingBrand(null)
+                            }}
+                            disabled={renameSaving}
+                            className="flex-1 min-w-0 bg-white border border-zinc-300 rounded-lg px-2 py-0.5 text-sm outline-none focus:border-zinc-500"
+                          />
+                        ) : (
+                          <>
+                            <span className="truncate">{brand.name}</span>
+                            {brand.isOwn && (
+                              <span className="text-[10px] font-semibold text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-full shrink-0">
+                                Yours
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </span>
+
+                      {/* Source badge */}
+                      {!isRenaming && (
+                        <span className={cn(
+                          'text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0',
+                          brand.source === 'manual'
+                            ? 'text-zinc-500 bg-white border-zinc-200'
+                            : 'text-zinc-400 bg-zinc-50 border-zinc-100'
+                        )}>
+                          {brand.source === 'manual' ? 'Manual' : 'Imported'}
+                        </span>
+                      )}
+
+                      {/* Platform badges */}
+                      {!isRenaming && brand.platforms.length > 0 && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {brand.platforms.map(p => {
+                            const label = p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()
+                            const key   = label as keyof typeof PLATFORM_COLORS
+                            return (
+                              <span key={p}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded border border-transparent text-white"
+                                style={{ background: PLATFORM_COLORS[key] ?? '#94a3b8' }}>
+                                {label}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Rename button — visible on hover */}
+                      {!isRenaming && (
+                        <button
+                          onClick={() => { setRenamingBrand(brand.name); setRenameValue(brand.name) }}
+                          disabled={isDeleting}
+                          title="Rename brand"
+                          className="opacity-0 group-hover:opacity-100 shrink-0 size-6 flex items-center justify-center rounded-lg text-zinc-300 hover:text-zinc-600 hover:bg-zinc-100 transition-all disabled:pointer-events-none"
+                        >
+                          <svg className="size-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path d="M11.5 2.5a2.121 2.121 0 0 1 3 3L5 15H2v-3L11.5 2.5Z" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Delete button — visible on hover */}
+                      {!isRenaming && (
+                        <button
+                          onClick={() => handleDeleteBrand(brand.name)}
+                          disabled={isDeleting}
+                          title="Remove brand"
+                          className="opacity-0 group-hover:opacity-100 shrink-0 size-6 flex items-center justify-center rounded-lg text-zinc-300 hover:text-rose-500 hover:bg-rose-50 transition-all disabled:pointer-events-none"
+                        >
+                          {isDeleting
+                            ? <Loader2 className="size-3 animate-spin text-zinc-400" />
+                            : <Trash2 className="size-3" />
+                          }
+                        </button>
+                      )}
+                    </div>
+                  )
+                })
+              )}
             </div>
-          </SectionCard>
+
+            {/* Sync note for imported brands */}
+            {brands.some(b => b.source === 'sync') && (
+              <p className="mt-3 text-[11px] text-zinc-400">
+                Imported brands re-appear after a sync if deleted. To permanently exclude a brand, remove it from your data source.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Right column: settings */}

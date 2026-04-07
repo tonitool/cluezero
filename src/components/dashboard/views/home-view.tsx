@@ -27,7 +27,7 @@ import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { cn } from '@/lib/utils'
 
 type ViewId =
@@ -108,6 +108,14 @@ function renderMarkdown(text: string) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate, connectionId }: Props) {
+  // Re-render when brand colors change in Setup
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
+
   const [query, setQuery] = useState('')
   const [submitted, setSubmitted] = useState('')
   const [aiAnswer, setAiAnswer] = useState('')
@@ -518,7 +526,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
           {liveCreatives
             ? liveCreatives.slice(0, 5).map((c: { id: string; brand: string; title: string; performanceIndex: number; funnelStage: string }) => {
-                const brandColor = (BRAND_COLORS as Record<string, string>)[c.brand.toLowerCase().replace(/[\s\-_]/g, '')] ?? '#888'
+                const brandColor = getBrandColor(c.brand, 0)
                 return (
                   <div
                     key={c.id}

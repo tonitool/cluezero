@@ -16,7 +16,7 @@ import {
 import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 import {
   Table,
@@ -49,6 +49,13 @@ interface Props {
 export function MovementView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<MovementData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  // Re-render when brand colors change in Setup
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -160,13 +167,13 @@ export function MovementView({ workspaceId, connectionId }: Props) {
                   <YAxis tick={TICK} tickLine={false} axisLine={false} />
                   <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  {brandKeys.map((key) => (
+                  {brandKeys.map((key, i) => (
                     <Line
                       key={key}
                       type="monotone"
                       dataKey={key}
                       name={key.charAt(0).toUpperCase() + key.slice(1)}
-                      stroke={BRAND_COLORS[key as keyof typeof BRAND_COLORS] ?? '#94A3B8'}
+                      stroke={getBrandColor(key, i)}
                       strokeWidth={2.5}
                       dot={false}
                       activeDot={ACTIVE_DOT}
@@ -191,7 +198,7 @@ export function MovementView({ workspaceId, connectionId }: Props) {
                   <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
                   <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={BRAND_COLORS.orlen} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={getBrandColor('orlen', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
                 </LineChart>
               </ResponsiveContainer>

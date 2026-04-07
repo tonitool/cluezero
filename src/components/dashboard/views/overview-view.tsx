@@ -8,13 +8,22 @@ import {
 import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtCurrency, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 
-const BRAND_ENTRIES = Object.entries(BRAND_COLORS) as [string, string][]
+// Re-render when brand colors change in Setup
+function useBrandColorTick() {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const h = () => setTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
+  return tick
+}
 
 function SubSection({ label }: { label: string }) {
   return (
@@ -40,6 +49,7 @@ type OverviewData = Record<string, any>
 export function OverviewView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  useBrandColorTick() // forces re-render when colors change
 
   useEffect(() => {
     if (!workspaceId) return
@@ -72,7 +82,8 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
   const newAdsTrend               = data?.newAdsTrend               ?? []
   const performanceTrend          = data?.performanceTrend          ?? []
   const weeklyMovementTable       = data?.table                     ?? []
-  const activeBrands: string[]    = data?.brands                   ?? BRAND_ENTRIES.map(([k]) => k)
+  const activeBrands: string[]               = data?.brands     ?? []
+  const brandNames: Record<string, string>   = data?.brandNames ?? {}
 
   return (
     <div>
@@ -105,7 +116,7 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
                   <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtCurrency} />} />
                   <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {activeBrands.map((bKey, i) => (
-                    <Bar key={bKey} dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stackId="a" fill={BRAND_COLORS[bKey] ?? `hsl(${i * 60},70%,50%)`} radius={i === activeBrands.length - 1 ? [3, 3, 0, 0] : undefined} />
+                    <Bar key={bKey} dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stackId="a" fill={getBrandColor(brandNames[bKey] ?? bKey, i)} radius={i === activeBrands.length - 1 ? [3, 3, 0, 0] : undefined} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -124,7 +135,7 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
                   <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {activeBrands.map((bKey, i) => (
-                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={BRAND_COLORS[bKey] ?? `hsl(${i * 60},70%,50%)`} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={getBrandColor(brandNames[bKey] ?? bKey, i)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -171,7 +182,7 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
                   <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {activeBrands.map((bKey, i) => (
-                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={BRAND_COLORS[bKey] ?? `hsl(${i * 60},70%,50%)`} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                    <Line key={bKey} type="monotone" dataKey={bKey} name={bKey === 'circleK' ? 'Circle K' : bKey.charAt(0).toUpperCase() + bKey.slice(1)} stroke={getBrandColor(brandNames[bKey] ?? bKey, i)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -191,7 +202,7 @@ export function OverviewView({ workspaceId, connectionId }: Props) {
                   <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
                   <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={BRAND_COLORS.orlen} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={getBrandColor('orlen', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
                 </LineChart>
               </ResponsiveContainer>

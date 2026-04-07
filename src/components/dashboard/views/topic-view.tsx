@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import {
   Bar,
   BarChart,
@@ -15,15 +16,13 @@ import {
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT } from '@/components/dashboard/_components/chart-theme'
 import {
   topicDistribution,
   topicByAdvertiser,
   newAdsByTopic,
 } from '@/components/dashboard/mock-data'
-
-const BRAND_COLOR_VALUES = Object.values(BRAND_COLORS)
 
 const TOPIC_LINE_COLORS: Record<string, string> = {
   shop:            '#6366F1',
@@ -34,6 +33,13 @@ const TOPIC_LINE_COLORS: Record<string, string> = {
 }
 
 export function TopicView() {
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
+
   return (
     <div>
       <SectionHeader
@@ -51,7 +57,7 @@ export function TopicView() {
               <Tooltip content={(p) => <ChartTooltip {...p} />} />
               <Bar dataKey="totalAds" radius={[0, 4, 4, 0]}>
                 {topicDistribution.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={BRAND_COLOR_VALUES[index % BRAND_COLOR_VALUES.length]} />
+                  <Cell key={`cell-${index}`} fill={getBrandColor('', index)} />
                 ))}
               </Bar>
             </BarChart>

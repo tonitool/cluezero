@@ -7,12 +7,12 @@ import {
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS, PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
+import { PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 
-// Palette for dynamic topics
+// Palette for topic-based charts (not brand-specific)
 const TOPIC_PALETTE = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#E4002B', '#8B5CF6', '#EC4899', '#14B8A6']
-const BRAND_COLOR_VALUES = Object.values(BRAND_COLORS)
 
 function SubSection({ label }: { label: string }) {
   return (
@@ -36,6 +36,13 @@ type CompetitiveData = Record<string, any>
 export function CompetitiveView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<CompetitiveData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  // Re-render when brand colors change in Setup
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -151,8 +158,8 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
                   <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={64} />
                   <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Bar dataKey="score" name="PI Score" radius={[0, 3, 3, 0]}>
-                    {performanceIndexRanking.map((entry: { advertiser: string }) => (
-                      <Cell key={entry.advertiser} fill={BRAND_COLORS[entry.advertiser.toLowerCase() as keyof typeof BRAND_COLORS] ?? '#94A3B8'} />
+                    {performanceIndexRanking.map((entry: { advertiser: string }, i: number) => (
+                      <Cell key={entry.advertiser} fill={getBrandColor(entry.advertiser, i)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -175,7 +182,7 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
                 <Tooltip content={(p) => <ChartTooltip {...p} />} />
                 <Bar dataKey="totalAds" radius={[0, 4, 4, 0]}>
                   {topicDistribution.map((_: unknown, index: number) => (
-                    <Cell key={`cell-${index}`} fill={BRAND_COLOR_VALUES[index % BRAND_COLOR_VALUES.length]} />
+                    <Cell key={`cell-${index}`} fill={TOPIC_PALETTE[index % TOPIC_PALETTE.length]} />
                   ))}
                 </Bar>
               </BarChart>

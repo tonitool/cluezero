@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export async function PATCH(req: NextRequest) {
-  const { workspaceId, name, slug, ownBrand, companyName, industry, website, brandDescription, targetAudience, aiContext, strategyContext } = await req.json() as {
+  const { workspaceId, name, slug, ownBrand, companyName, industry, website, brandDescription, targetAudience, aiContext, strategyContext, brandColors } = await req.json() as {
     workspaceId: string
     name: string
     slug: string
@@ -15,6 +15,7 @@ export async function PATCH(req: NextRequest) {
     targetAudience?: string
     aiContext?: string
     strategyContext?: Record<string, string>
+    brandColors?: Record<string, string>
   }
 
   if (!workspaceId || !name || !slug) {
@@ -74,6 +75,7 @@ export async function PATCH(req: NextRequest) {
       ...(targetAudience !== undefined ? { target_audience:    targetAudience  || null } : {}),
       ...(aiContext        !== undefined ? { ai_context:         aiContext        || null } : {}),
       ...(strategyContext  !== undefined ? { strategy_context:   strategyContext  || null } : {}),
+      ...(brandColors      !== undefined ? { brand_colors:       brandColors             } : {}),
     })
     .eq('id', workspaceId)
 

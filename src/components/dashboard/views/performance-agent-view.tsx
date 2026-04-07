@@ -1,170 +1,276 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
-  TrendingUp, User, Send, RefreshCcw, ChevronDown, ChevronUp,
-  BarChart3, Search, Lightbulb, GitCompare, Layers, ArrowLeft,
-  Wrench, CheckCircle2, AlertCircle, Loader2,
+  TrendingUp, TrendingDown, RefreshCcw, ArrowLeft, Loader2,
+  AlertCircle, ArrowRight, Zap, Target, BarChart3, Lightbulb,
+  CheckCircle2, ChevronRight, Plug,
 } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import type { PerformanceBrief } from '@/app/api/agents/performance/brief/route'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type AgentEventType = 'tool_call' | 'tool_result' | 'text' | 'error' | 'done'
-
-interface AgentEvent {
-  type:     AgentEventType
-  tool?:    string
-  input?:   Record<string, unknown>
-  result?:  string
-  text?:    string
-  message?: string
+function fmt(n: number, decimals = 0) {
+  return n.toLocaleString('en-GB', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
-interface ToolStep {
-  tool:    string
-  input:   Record<string, unknown>
-  result?: string
-  done:    boolean
+function fmtEur(n: number) {
+  if (n >= 1000) return `€${fmt(n / 1000, 1)}k`
+  return `€${fmt(n, 0)}`
 }
 
-interface Message {
-  id:        string
-  role:      'user' | 'assistant'
-  text:      string
-  toolSteps: ToolStep[]
-  error?:    string
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  return `${Math.floor(m / 60)}h ago`
 }
 
-// ─── Tool display config ──────────────────────────────────────────────────────
-
-const TOOL_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  get_market_overview:          { label: 'Market overview',       icon: BarChart3,    color: 'text-indigo-600' },
-  get_brand_analysis:           { label: 'Brand analysis',        icon: Search,       color: 'text-blue-600' },
-  get_top_creatives:            { label: 'Creative analysis',     icon: Layers,       color: 'text-violet-600' },
-  get_whitespace_opportunities: { label: 'Whitespace analysis',   icon: Lightbulb,    color: 'text-emerald-600' },
-  compare_brands:               { label: 'Brand comparison',      icon: GitCompare,   color: 'text-amber-600' },
+const PRIORITY_CONFIG = {
+  high:   { label: 'High',   className: 'bg-rose-50 text-rose-700 border-rose-200' },
+  medium: { label: 'Medium', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  low:    { label: 'Low',    className: 'bg-zinc-50 text-zinc-600 border-zinc-200' },
 }
 
-// ─── Suggested prompts ────────────────────────────────────────────────────────
+const OPPORTUNITY_ICONS = {
+  funnel:   Target,
+  platform: Plug,
+  topic:    Lightbulb,
+  budget:   BarChart3,
+}
 
-const SUGGESTED = [
-  { icon: BarChart3,  text: 'Give me a full market overview for this week' },
-  { icon: TrendingUp, text: 'Which competitor is the biggest threat right now and why?' },
-  { icon: Lightbulb,  text: 'What whitespace opportunities am I missing?' },
-  { icon: GitCompare, text: 'Compare my brand vs the top 2 competitors' },
-  { icon: Layers,     text: 'Show me the top 5 performing creatives in the market' },
-  { icon: Search,     text: 'What should I do in the next 2 weeks to improve my position?' },
-]
+// ─── Section skeleton ─────────────────────────────────────────────────────────
 
-// ─── Markdown renderer ────────────────────────────────────────────────────────
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('bg-zinc-100 animate-pulse rounded-md', className)} />
+}
 
-function renderMarkdown(text: string) {
-  const lines = text.split('\n')
-  return lines.map((line, i) => {
-    // Bold
-    const parts = line.split(/(\*\*[^*]+\*\*)/)
-    const rendered = parts.map((part, j) =>
-      part.startsWith('**') && part.endsWith('**')
-        ? <strong key={j}>{part.slice(2, -2)}</strong>
-        : part
+function BriefSkeleton() {
+  return (
+    <div className="space-y-5">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="bg-white rounded-xl border border-border shadow-sm p-5 space-y-3">
+          <Skeleton className="h-4 w-32" />
+          <div className="grid grid-cols-3 gap-3">
+            <Skeleton className="h-16 rounded-lg" />
+            <Skeleton className="h-16 rounded-lg" />
+            <Skeleton className="h-16 rounded-lg" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Section: Account Health ──────────────────────────────────────────────────
+
+function AccountHealthSection({ data }: { data: PerformanceBrief['accountHealth'] }) {
+  if (!data.hasConnectedAccounts) {
+    return (
+      <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Account Health</p>
+        <div className="flex items-start gap-3 bg-zinc-50 rounded-lg p-4 border border-dashed border-border">
+          <Plug className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium">No ad accounts connected</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Connect your Google Ads or Meta Ads account in Connections to see live campaign performance here.</p>
+          </div>
+        </div>
+      </div>
     )
-    // Bullet points
-    if (line.startsWith('• ') || line.startsWith('- ')) {
-      return <li key={i} className="ml-3">{rendered.slice(1)}</li>
-    }
-    return <span key={i}>{rendered}{i < lines.length - 1 && <br />}</span>
-  })
-}
+  }
 
-// ─── Tool step display ────────────────────────────────────────────────────────
-
-function ToolStepRow({ step }: { step: ToolStep }) {
-  const [open, setOpen] = useState(false)
-  const cfg = TOOL_CONFIG[step.tool] ?? { label: step.tool, icon: Wrench, color: 'text-zinc-500' }
-  const Icon = cfg.icon
+  const metrics = [
+    { label: 'Total Spend',   value: fmtEur(data.totalSpend),          sub: 'last 30 days' },
+    { label: 'ROAS',          value: data.roas ? `${data.roas}x` : '—', sub: 'return on ad spend' },
+    { label: 'Clicks',        value: fmt(data.clicks),                  sub: 'last 30 days' },
+    { label: 'Conversions',   value: fmt(data.conversions),             sub: 'last 30 days' },
+  ]
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden text-xs">
-      <button
-        className="flex items-center gap-2 w-full px-3 py-2 bg-zinc-50 hover:bg-zinc-100 transition-colors text-left"
-        onClick={() => step.result && setOpen(v => !v)}
-      >
-        <Icon className={cn('size-3.5 shrink-0', cfg.color)} />
-        <span className="font-medium text-zinc-700">{cfg.label}</span>
-        {Object.keys(step.input ?? {}).length > 0 && (
-          <span className="text-zinc-400 truncate max-w-[200px]">
-            ({Object.entries(step.input ?? {}).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')})
-          </span>
-        )}
-        <span className="ml-auto shrink-0">
-          {!step.done
-            ? <Loader2 className="size-3 animate-spin text-zinc-400" />
-            : step.result
-              ? (open ? <ChevronUp className="size-3 text-zinc-400" /> : <ChevronDown className="size-3 text-zinc-400" />)
-              : <CheckCircle2 className="size-3 text-emerald-500" />}
-        </span>
-      </button>
-      {open && step.result && (
-        <div className="px-3 py-2 bg-white border-t border-border">
-          <pre className="text-[11px] text-zinc-600 whitespace-pre-wrap font-mono leading-relaxed">{step.result}</pre>
+    <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Account Health</p>
+        <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5">
+          <CheckCircle2 className="size-3" /> Live
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {metrics.map(m => (
+          <div key={m.label} className="bg-zinc-50 rounded-lg px-3 py-3 border border-zinc-100">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{m.label}</p>
+            <p className="text-lg font-semibold mt-0.5 tabular-nums">{m.value}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{m.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {data.summary && (
+        <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-3">{data.summary}</p>
+      )}
+
+      {data.platforms.length > 0 && (
+        <div className="flex gap-2 flex-wrap mt-3">
+          {data.platforms.map(p => (
+            <div key={p.name} className="text-[11px] bg-white border border-border rounded-full px-2.5 py-1 text-muted-foreground">
+              {p.name}: {fmtEur(p.spend)} · {p.campaigns} campaigns
+            </div>
+          ))}
         </div>
       )}
     </div>
   )
 }
 
-// ─── Message bubble ───────────────────────────────────────────────────────────
+// ─── Section: Market Position ─────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: Message }) {
-  const isUser = msg.role === 'user'
+function MarketPositionSection({ data }: { data: PerformanceBrief['marketPosition'] }) {
+  const hasData = data.totalBrands > 0
+
+  if (!hasData) {
+    return (
+      <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">Market Position</p>
+        <p className="text-xs text-muted-foreground">No competitive data yet. Sync a data source first.</p>
+      </div>
+    )
+  }
+
+  const wowPositive = data.wowChange?.startsWith('+') || (data.wowChange && !data.wowChange.startsWith('-'))
+  const aboveMarket  = data.piScore != null && data.marketAvgPi != null && data.piScore > data.marketAvgPi
+
   return (
-    <div className={cn('flex gap-3', isUser && 'flex-row-reverse')}>
-      <div className={cn(
-        'size-7 rounded-full flex items-center justify-center shrink-0 mt-0.5',
-        isUser ? 'bg-zinc-200 text-zinc-600' : 'bg-indigo-600 text-white'
-      )}>
-        {isUser ? <User className="size-3.5" /> : <TrendingUp className="size-3.5" />}
+    <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+      <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Market Position</p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div className="bg-zinc-50 rounded-lg px-3 py-3 border border-zinc-100">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Spend Rank</p>
+          <p className="text-lg font-semibold mt-0.5">
+            {data.spendRank ? `#${data.spendRank}` : '—'}
+            <span className="text-xs font-normal text-muted-foreground ml-1">of {data.totalBrands}</span>
+          </p>
+        </div>
+        <div className="bg-zinc-50 rounded-lg px-3 py-3 border border-zinc-100">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Spend Share</p>
+          <p className="text-lg font-semibold mt-0.5 tabular-nums">
+            {data.spendShare != null ? `${data.spendShare}%` : '—'}
+          </p>
+          {data.wowChange && (
+            <p className={cn('text-[10px] mt-0.5 flex items-center gap-0.5', wowPositive ? 'text-emerald-600' : 'text-rose-600')}>
+              {wowPositive ? <TrendingUp className="size-2.5" /> : <TrendingDown className="size-2.5" />}
+              {data.wowChange} WoW
+            </p>
+          )}
+        </div>
+        <div className="bg-zinc-50 rounded-lg px-3 py-3 border border-zinc-100">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Perf. Index</p>
+          <p className="text-lg font-semibold mt-0.5 tabular-nums">{data.piScore ?? '—'}</p>
+          <p className={cn('text-[10px] mt-0.5', aboveMarket ? 'text-emerald-600' : 'text-zinc-400')}>
+            avg {data.marketAvgPi ?? '—'} {aboveMarket ? '↑ above' : '↓ below'}
+          </p>
+        </div>
+        <div className="bg-zinc-50 rounded-lg px-3 py-3 border border-zinc-100">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Weekly Spend</p>
+          <p className="text-lg font-semibold mt-0.5 tabular-nums">
+            {data.weeklySpend != null ? fmtEur(data.weeklySpend) : '—'}
+          </p>
+        </div>
       </div>
 
-      <div className={cn('max-w-[85%] space-y-2', isUser && 'items-end flex flex-col')}>
-        {/* Tool steps (only for assistant) */}
-        {!isUser && msg.toolSteps.length > 0 && (
-          <div className="space-y-1.5 w-full">
-            {msg.toolSteps.map((step, i) => <ToolStepRow key={i} step={step} />)}
+      {data.competitors.length > 0 && (
+        <>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Competitors</p>
+          <div className="space-y-2">
+            {data.competitors.map(c => (
+              <div key={c.name} className="flex items-center gap-3 text-sm">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-xs font-medium truncate">{c.name}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{c.share}% · PI {c.pi ?? '—'} · {c.newAds} new</span>
+                  </div>
+                  <div className="h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-200 rounded-full"
+                      style={{ width: `${Math.min(c.share * 2, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
+        </>
+      )}
+    </div>
+  )
+}
 
-        {/* Message content */}
-        {msg.error ? (
-          <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-xs text-rose-700">
-            <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
-            {msg.error}
-          </div>
-        ) : msg.text ? (
-          <div className={cn(
-            'rounded-xl px-4 py-3 text-sm leading-relaxed',
-            isUser
-              ? 'bg-foreground text-background'
-              : 'bg-white border border-border shadow-sm text-foreground'
-          )}>
-            {isUser
-              ? <p>{msg.text}</p>
-              : <div className="text-sm leading-relaxed">{renderMarkdown(msg.text)}</div>}
-          </div>
-        ) : !isUser && msg.toolSteps.length > 0 ? (
-          // Still processing — show spinner
-          <div className="bg-white border border-border rounded-xl px-4 py-3 shadow-sm">
-            <span className="flex gap-1 items-center h-4">
-              <span className="size-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:0ms]" />
-              <span className="size-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:150ms]" />
-              <span className="size-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:300ms]" />
-            </span>
-          </div>
-        ) : null}
+// ─── Section: Opportunities ───────────────────────────────────────────────────
+
+function OpportunitiesSection({ data }: { data: PerformanceBrief['opportunities'] }) {
+  if (!data.length) return null
+
+  return (
+    <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+      <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Opportunities</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {data.map((opp, i) => {
+          const Icon = OPPORTUNITY_ICONS[opp.type] ?? Lightbulb
+          return (
+            <div key={i} className="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-3">
+              <div className="size-7 rounded-md bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
+                <Icon className="size-3.5 text-emerald-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-900">{opp.title}</p>
+                <p className="text-[11px] text-emerald-700 mt-0.5 leading-relaxed">{opp.description}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Section: Recommendations ─────────────────────────────────────────────────
+
+function RecommendationsSection({ data }: { data: PerformanceBrief['recommendations'] }) {
+  if (!data.length) return null
+
+  const sorted = [...data].sort((a, b) => {
+    const order = { high: 0, medium: 1, low: 2 }
+    return order[a.priority] - order[b.priority]
+  })
+
+  return (
+    <div className="bg-white rounded-xl border border-border shadow-sm p-5">
+      <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Recommendations</p>
+      <div className="space-y-3">
+        {sorted.map((rec, i) => {
+          const cfg = PRIORITY_CONFIG[rec.priority]
+          return (
+            <div key={i} className="flex items-start gap-3 border border-border rounded-lg px-4 py-3">
+              <Badge variant="outline" className={cn('text-[10px] font-semibold shrink-0 mt-0.5', cfg.className)}>
+                {cfg.label}
+              </Badge>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{rec.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{rec.rationale}</p>
+                <div className="flex items-center gap-1 mt-2 text-xs text-indigo-600">
+                  <ChevronRight className="size-3 shrink-0" />
+                  <span>{rec.action}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -181,139 +287,38 @@ interface Props {
 
 export function PerformanceAgentView({ workspaceId, ownBrand, connectionId, onBack }: Props) {
   const brandLabel = ownBrand || 'Your Brand'
-  const [messages,  setMessages]  = useState<Message[]>([])
-  const [input,     setInput]     = useState('')
-  const [streaming, setStreaming] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const abortRef  = useRef<AbortController | null>(null)
+  const [brief,     setBrief]     = useState<PerformanceBrief | null>(null)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
+
+  const runBrief = useCallback(async () => {
+    if (!workspaceId) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/agents/performance/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId, connectionId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to generate brief')
+      setBrief(data as PerformanceBrief)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
+  }, [workspaceId, connectionId])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  // Build conversation history for API (user/assistant text only)
-  function buildHistory() {
-    return messages
-      .filter(m => m.text)
-      .map(m => ({ role: m.role, content: m.text }))
-  }
-
-  async function send(text: string) {
-    if (!text.trim() || streaming || !workspaceId) return
-
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text.trim(), toolSteps: [] }
-    const assistantId = (Date.now() + 1).toString()
-    const assistantMsg: Message = { id: assistantId, role: 'assistant', text: '', toolSteps: [] }
-
-    setMessages(prev => [...prev, userMsg, assistantMsg])
-    setInput('')
-    setStreaming(true)
-
-    const abort = new AbortController()
-    abortRef.current = abort
-
-    try {
-      const res = await fetch('/api/agents/performance', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal:  abort.signal,
-        body: JSON.stringify({
-          message:      text.trim(),
-          history:      buildHistory(),
-          workspaceId,
-          connectionId,
-        }),
-      })
-
-      if (!res.ok) {
-        const err = await res.text()
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId ? { ...m, error: `Error: ${err}` } : m
-        ))
-        return
-      }
-
-      const reader  = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let   buffer  = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed) continue
-          let event: AgentEvent
-          try { event = JSON.parse(trimmed) } catch { continue }
-
-          switch (event.type) {
-            case 'tool_call':
-              setMessages(prev => prev.map(m => {
-                if (m.id !== assistantId) return m
-                return { ...m, toolSteps: [...m.toolSteps, { tool: event.tool!, input: event.input ?? {}, done: false }] }
-              }))
-              break
-
-            case 'tool_result':
-              setMessages(prev => prev.map(m => {
-                if (m.id !== assistantId) return m
-                const steps = m.toolSteps.map(s =>
-                  s.tool === event.tool && !s.done ? { ...s, result: event.result, done: true } : s
-                )
-                return { ...m, toolSteps: steps }
-              }))
-              break
-
-            case 'text':
-              setMessages(prev => prev.map(m =>
-                m.id === assistantId ? { ...m, text: m.text + (event.text ?? '') } : m
-              ))
-              break
-
-            case 'error':
-              setMessages(prev => prev.map(m =>
-                m.id === assistantId ? { ...m, error: event.message } : m
-              ))
-              break
-
-            case 'done':
-              break
-          }
-        }
-      }
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId ? { ...m, error: 'Something went wrong. Please try again.' } : m
-        ))
-      }
-    } finally {
-      setStreaming(false)
-      abortRef.current = null
-    }
-  }
-
-  function handleStop() {
-    abortRef.current?.abort()
-    setStreaming(false)
-  }
-
-  function handleReset() {
-    abortRef.current?.abort()
-    setStreaming(false)
-    setInput('')
-    setMessages([])
-  }
+    if (workspaceId) runBrief()
+  }, [workspaceId, runBrief])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
+    <div>
       {/* Header */}
-      <div className="flex items-start justify-between mb-3 shrink-0">
+      <div className="flex items-start justify-between mb-6">
         <div className="flex items-start gap-3">
           {onBack && (
             <button onClick={onBack} className="mt-1 text-muted-foreground hover:text-foreground transition-colors">
@@ -321,88 +326,76 @@ export function PerformanceAgentView({ workspaceId, ownBrand, connectionId, onBa
             </button>
           )}
           <SectionHeader
-            title="Performance Marketing Manager"
-            description={`AI agent with live access to ${brandLabel}'s competitive data — uses tools to fetch real numbers before answering`}
+            title="Performance Brief"
+            description={`Weekly AI-generated analysis for ${brandLabel} — competitive position, own account health, and what to do next`}
           />
         </div>
-        {messages.length > 0 && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1.5 mt-1 shrink-0" onClick={handleReset}>
-            <RefreshCcw className="size-3" />
-            New session
+        <div className="flex items-center gap-2 shrink-0 mt-1">
+          {brief?.generatedAt && !loading && (
+            <span className="text-[11px] text-muted-foreground">Updated {timeAgo(brief.generatedAt)}</span>
+          )}
+          <Button
+            variant="outline" size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={runBrief}
+            disabled={loading || !workspaceId}
+          >
+            {loading
+              ? <><Loader2 className="size-3 animate-spin" /> Analysing…</>
+              : <><RefreshCcw className="size-3" /> Refresh</>
+            }
           </Button>
-        )}
-      </div>
-
-      {/* Capability pills */}
-      <div className="flex gap-2 flex-wrap mb-4 shrink-0">
-        {Object.values(TOOL_CONFIG).map(cfg => {
-          const Icon = cfg.icon
-          return (
-            <div key={cfg.label} className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-white border border-border rounded-full px-2.5 py-1 shadow-sm">
-              <Icon className={cn('size-3', cfg.color)} />
-              {cfg.label}
-            </div>
-          )
-        })}
+        </div>
       </div>
 
       {/* No workspace */}
       {!workspaceId && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700 mb-4 shrink-0">
-          No workspace connected. Please log in and select a workspace to use this agent.
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700">
+          <AlertCircle className="size-3.5 shrink-0" />
+          No workspace connected. Log in and select a workspace to run this brief.
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto space-y-5 pr-1 mb-4 min-h-0">
-
-        {/* Suggested prompts — only when empty */}
-        {messages.length === 0 && (
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-xs text-rose-700 mb-4">
+          <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
           <div>
-            <p className="text-xs text-muted-foreground mb-3">
-              This agent calls real tools to fetch live data — it doesn't guess. Try asking:
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {SUGGESTED.map(({ icon: Icon, text }) => (
-                <button
-                  key={text}
-                  onClick={() => send(text)}
-                  disabled={!workspaceId || streaming}
-                  className="flex items-start gap-2.5 text-left bg-white border border-border rounded-lg px-4 py-3 text-xs text-muted-foreground hover:text-foreground hover:border-zinc-400 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Icon className="size-3.5 mt-0.5 shrink-0 text-indigo-400" />
-                  {text}
-                </button>
-              ))}
-            </div>
+            <p className="font-medium">Analysis failed</p>
+            <p className="mt-0.5 text-rose-600">{error}</p>
+            <button className="mt-1.5 flex items-center gap-1 underline" onClick={runBrief}>
+              <RefreshCcw className="size-3" /> Try again
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
-        <div ref={bottomRef} />
-      </div>
+      {/* Loading skeleton */}
+      {loading && !brief && <BriefSkeleton />}
 
-      {/* Input */}
-      <div className="flex gap-2 shrink-0">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send(input)}
-          placeholder={workspaceId ? 'Ask about spend, competitors, creatives, opportunities…' : 'Connect a workspace to start…'}
-          className="flex-1 h-10 px-4 text-sm rounded-lg border border-border bg-white focus:outline-none focus:ring-2 focus:ring-ring shadow-sm disabled:opacity-50"
-          disabled={streaming || !workspaceId}
-        />
-        {streaming ? (
-          <Button size="sm" variant="outline" className="h-10 px-4 gap-1.5 border-rose-200 text-rose-600 hover:bg-rose-50" onClick={handleStop}>
-            Stop
-          </Button>
-        ) : (
-          <Button size="sm" className="h-10 px-4 gap-1.5 bg-indigo-600 hover:bg-indigo-700" onClick={() => send(input)} disabled={!input.trim() || !workspaceId}>
-            <Send className="size-3.5" />
-            Send
-          </Button>
-        )}
-      </div>
+      {/* Brief content */}
+      {brief && (
+        <div className="space-y-5">
+          {/* Running indicator overlay on refresh */}
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+              <Zap className="size-3.5" />
+              Refreshing analysis — showing last brief below
+            </div>
+          )}
+
+          <AccountHealthSection    data={brief.accountHealth} />
+          <MarketPositionSection   data={brief.marketPosition} />
+          <OpportunitiesSection    data={brief.opportunities} />
+          <RecommendationsSection  data={brief.recommendations} />
+
+          {/* Footer */}
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground pb-2">
+            <ArrowRight className="size-3" />
+            Brief generated by Claude · {new Date(brief.generatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

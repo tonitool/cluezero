@@ -9,6 +9,7 @@ import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { FUNNEL_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT } from '@/components/dashboard/_components/chart-theme'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -47,6 +48,13 @@ type PerfData = Record<string, any>
 export function PerformanceView({ workspaceId, connectionId }: Props) {
   const [data, setData] = useState<PerfData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  // Re-render when brand colors change in Setup
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -159,14 +167,16 @@ export function PerformanceView({ workspaceId, connectionId }: Props) {
         <p className="text-xs text-muted-foreground">No creative data available.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
-          {topCreatives.map((creative: { id: string; platform: string; performanceIndex: number; title: string; brand: string; funnelStage: string; sentiment: number; thumbnail?: string }) => {
+          {topCreatives.map((creative: { id: string; platform: string; performanceIndex: number; title: string; brand: string; funnelStage: string; sentiment: number; thumbnail?: string }, ci: number) => {
             const platformColor = PLATFORM_BADGE_COLORS[creative.platform] ?? '#888'
-            const sentimentPct = ((creative.sentiment + 1) / 2) * 100
-            const brandInitial = creative.brand.charAt(0).toUpperCase()
+            const sentimentPct  = ((creative.sentiment + 1) / 2) * 100
+            const brandInitial  = creative.brand.charAt(0).toUpperCase()
+            const brandColor    = getBrandColor(creative.brand, ci)
 
             return (
               <div key={creative.id} className="bg-white rounded-xl border border-border shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                <div className="aspect-video bg-muted flex items-center justify-center overflow-hidden">
+                <div className="aspect-video flex items-center justify-center overflow-hidden"
+                  style={{ background: `${brandColor}18` }}>
                   {creative.thumbnail ? (
                     <img
                       src={creative.thumbnail}
@@ -176,12 +186,12 @@ export function PerformanceView({ workspaceId, connectionId }: Props) {
                         ;(e.currentTarget as HTMLImageElement).style.display = 'none'
                         const parent = e.currentTarget.parentElement
                         if (parent) {
-                          parent.innerHTML = `<span class="text-2xl font-bold text-muted-foreground select-none">${brandInitial}</span>`
+                          parent.innerHTML = `<span class="text-2xl font-bold select-none" style="color:${brandColor}">${brandInitial}</span>`
                         }
                       }}
                     />
                   ) : (
-                    <span className="text-2xl font-bold text-muted-foreground select-none">{brandInitial}</span>
+                    <span className="text-2xl font-bold select-none" style={{ color: brandColor }}>{brandInitial}</span>
                   )}
                 </div>
                 <div className="p-3">

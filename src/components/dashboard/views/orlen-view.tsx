@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { TICK, GRID } from '@/components/dashboard/_components/chart-theme'
 import { Badge } from '@/components/ui/badge'
 
@@ -49,7 +49,7 @@ function WhitespaceBadge({ level }: { level: string }) {
 
 interface ScatterDotProps { cx?: number; cy?: number; payload?: { advertiser: string } }
 function ScatterDot({ cx = 0, cy = 0, payload }: ScatterDotProps) {
-  const color = BRAND_COLORS[brandColorKey(payload?.advertiser ?? '')] ?? '#888'
+  const color = getBrandColor(payload?.advertiser ?? '', 0)
   return <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
 }
 
@@ -62,6 +62,12 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
   const brandLabel = ownBrand || 'ORLEN'
   const [data, setData] = useState<OrlenData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
 
   useEffect(() => {
     if (!workspaceId) return
@@ -102,7 +108,7 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3">{item.label}</p>
             <div className="flex items-end gap-4">
               <div className="flex-1">
-                <p className="text-2xl font-bold tabular-nums leading-none" style={{ color: BRAND_COLORS.orlen }}>
+                <p className="text-2xl font-bold tabular-nums leading-none" style={{ color: getBrandColor(ownBrand, 0) }}>
                   {typeof item.orlen === 'number' && item.orlen >= 100 ? item.orlen.toLocaleString() : item.orlen}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-widest">{brandLabel}</p>
@@ -175,7 +181,7 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
             <div className="flex flex-wrap gap-3 mt-2 px-1">
               {marketActivityVsPresence.map((item: { advertiser: string }) => (
                 <div key={item.advertiser} className="flex items-center gap-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: BRAND_COLORS[brandColorKey(item.advertiser)] }} />
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getBrandColor(item.advertiser, 0) }} />
                   <span className="text-[11px] text-muted-foreground">{item.advertiser}</span>
                 </div>
               ))}

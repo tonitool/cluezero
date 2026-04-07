@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import {
   Bar,
   BarChart,
@@ -15,7 +16,8 @@ import {
 } from 'recharts'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
-import { BRAND_COLORS, PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
+import { PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
 import {
   platformDistributionByAdvertiser,
@@ -25,6 +27,13 @@ import {
 } from '@/components/dashboard/mock-data'
 
 export function AdvertiserView() {
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
+
   return (
     <div>
       <SectionHeader
@@ -80,10 +89,10 @@ export function AdvertiserView() {
                 <YAxis tick={TICK} tickLine={false} axisLine={false} />
                 <Tooltip content={(p) => <ChartTooltip {...p} />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                <Line type="monotone" dataKey="orlenMeta"   name="ORLEN Meta"   stroke={BRAND_COLORS.orlen} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
-                <Line type="monotone" dataKey="orlenGoogle" name="ORLEN Google" stroke={BRAND_COLORS.orlen} strokeWidth={2}   dot={false} strokeDasharray="4 3"   activeDot={ACTIVE_DOT} />
-                <Line type="monotone" dataKey="aralMeta"    name="Aral Meta"    stroke={BRAND_COLORS.aral}  strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
-                <Line type="monotone" dataKey="aralGoogle"  name="Aral Google"  stroke={BRAND_COLORS.aral}  strokeWidth={2}   dot={false} strokeDasharray="4 3"   activeDot={ACTIVE_DOT} />
+                <Line type="monotone" dataKey="orlenMeta"   name="ORLEN Meta"   stroke={getBrandColor('orlen', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                <Line type="monotone" dataKey="orlenGoogle" name="ORLEN Google" stroke={getBrandColor('orlen', 0)} strokeWidth={2}   dot={false} strokeDasharray="4 3"   activeDot={ACTIVE_DOT} />
+                <Line type="monotone" dataKey="aralMeta"    name="Aral Meta"    stroke={getBrandColor('aral',  1)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                <Line type="monotone" dataKey="aralGoogle"  name="Aral Google"  stroke={getBrandColor('aral',  1)} strokeWidth={2}   dot={false} strokeDasharray="4 3"   activeDot={ACTIVE_DOT} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -99,7 +108,7 @@ export function AdvertiserView() {
                 <Tooltip content={(p) => <ChartTooltip {...p} />} />
                 <Bar dataKey="score" name="PI Score" radius={[0, 3, 3, 0]}>
                   {performanceIndexRanking.map((entry) => (
-                    <Cell key={entry.advertiser} fill={entry.advertiser === 'ORLEN' ? BRAND_COLORS.orlen : '#94A3B8'} />
+                    <Cell key={entry.advertiser} fill={getBrandColor(entry.advertiser, 0)} />
                   ))}
                 </Bar>
               </BarChart>
