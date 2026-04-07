@@ -235,7 +235,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
 
   return (
     <SidebarProvider>
-      <Sidebar className="dark" collapsible="icon">
+      <Sidebar className="dark print:hidden" collapsible="icon">
         <SidebarHeader className="p-0">
           <div className="flex items-center gap-3 px-4 py-4">
             <ClueZeroMark size={30} color="white" className="shrink-0" />
@@ -309,7 +309,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
       </Sidebar>
 
       <SidebarInset className="bg-zinc-50 dark:bg-background">
-        <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-border bg-white/80 backdrop-blur-sm px-4 shrink-0">
+        <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-border bg-white/80 backdrop-blur-sm px-4 shrink-0 print:hidden">
           <SidebarTrigger className="size-8" />
           <Separator orientation="vertical" className="h-4" />
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">

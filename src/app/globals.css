@@ -131,3 +131,37 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  /* Hide everything except the main content area */
+  [data-sidebar],
+  [data-sidebar="sidebar"],
+  aside,
+  header,
+  nav,
+  .sidebar,
+  [class*="sidebar"],
+  [class*="SidebarInset"] > header,
+  [class*="SidebarTrigger"] {
+    display: none !important;
+  }
+
+  /* Make main content fill the full page */
+  main,
+  [data-slot="sidebar-inset"] > main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Remove shadows and borders that don't print well */
+  * {
+    box-shadow: none !important;
+  }
+
+  /* Keep page breaks clean */
+  .recharts-wrapper,
+  .recharts-responsive-container {
+    page-break-inside: avoid;
+  }
+}
