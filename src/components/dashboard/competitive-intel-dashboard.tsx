@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Home,
   BarChart3,
@@ -12,6 +12,7 @@ import {
   RefreshCcw,
   Download,
   ChevronRight,
+  Loader2,
   Bot,
   LogOut,
   CircleUser,
@@ -153,6 +154,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
   const [connectionId, setConnectionId] = useState<string>('all')
   const [refreshKey, setRefreshKey] = useState(0)
   const [showExport, setShowExport] = useState(false)
+  const [syncingGlobal, setSyncingGlobal] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -162,17 +164,31 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
     loadBrandColors(workspaceId)
   }, [workspaceId])
 
-  useEffect(() => {
+  const checkSyncStatus = useCallback(() => {
     if (!workspaceId) return
     fetch(`/api/snowflake/status?workspaceId=${workspaceId}`)
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d.connections) && d.connections.length > 0) {
           setSources(d.connections.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))
+          setSyncingGlobal(d.connections.some((c: { syncStatus: string }) => c.syncStatus === 'syncing'))
+        } else {
+          setSyncingGlobal(false)
         }
       })
       .catch(() => {})
   }, [workspaceId])
+
+  useEffect(() => {
+    checkSyncStatus()
+  }, [checkSyncStatus])
+
+  // Poll while any connection is syncing
+  useEffect(() => {
+    if (!syncingGlobal) return
+    const interval = setInterval(checkSyncStatus, 3000)
+    return () => clearInterval(interval)
+  }, [syncingGlobal, checkSyncStatus])
 
   function navigateTo(next: ViewId) {
     if (next === view && !transitioning) return
@@ -344,6 +360,12 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
                   ))}
                 </SelectContent>
               </Select>
+            )}
+            {syncingGlobal && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2.5 h-8">
+                <Loader2 className="size-3.5 animate-spin" />
+                Syncing…
+              </div>
             )}
             <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs border-border bg-white"
               onClick={() => setRefreshKey(k => k + 1)}>

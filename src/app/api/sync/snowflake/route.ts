@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { syncConnection } from '@/lib/sync-connection'
+
+function admin() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -11,13 +19,10 @@ export async function POST(req: NextRequest) {
   const { workspaceId, connectionId } = await req.json() as { workspaceId: string; connectionId: string }
   if (!workspaceId || !connectionId) return NextResponse.json({ error: 'workspaceId and connectionId required' }, { status: 400 })
 
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  const db = admin()
 
   // Verify membership
-  const { data: membership } = await admin
+  const { data: membership } = await db
     .from('workspace_members')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -26,11 +31,33 @@ export async function POST(req: NextRequest) {
 
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const result = await syncConnection(connectionId, workspaceId)
+  // Mark as syncing immediately so the UI can reflect it right away
+  await db
+    .from('snowflake_connections')
+    .update({ sync_status: 'syncing', sync_error: null })
+    .eq('id', connectionId)
 
-  if (!result.ok) {
-    return NextResponse.json({ error: result.errors[0] ?? 'Sync failed' }, { status: 500 })
-  }
+  // Run the actual sync in the background — response returns immediately
+  // so the user can navigate away freely while sync continues.
+  after(async () => {
+    try {
+      const result = await syncConnection(connectionId, workspaceId)
+      await db
+        .from('snowflake_connections')
+        .update({
+          sync_status:    'idle',
+          last_synced_at: new Date().toISOString(),
+          last_sync_rows: result.inserted ?? 0,
+          sync_error:     result.ok ? null : (result.errors[0] ?? 'Sync failed'),
+        })
+        .eq('id', connectionId)
+    } catch (err) {
+      await db
+        .from('snowflake_connections')
+        .update({ sync_status: 'error', sync_error: String(err) })
+        .eq('id', connectionId)
+    }
+  })
 
-  return NextResponse.json(result)
+  return NextResponse.json({ started: true })
 }

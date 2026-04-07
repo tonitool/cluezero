@@ -100,9 +100,21 @@ export function ConnectionsView({ workspaceId }: Props) {
     }
   }, [loadSfConnections, loadAdConnections])
 
+  // Poll sync_status while any connection is syncing
+  useEffect(() => {
+    const anySyncing = sfConnections.some(c => c.syncStatus === 'syncing')
+    if (!anySyncing) return
+    const interval = setInterval(loadSfConnections, 3000)
+    return () => clearInterval(interval)
+  }, [sfConnections, loadSfConnections])
+
   function handleSync(connId: string) {
     if (!workspaceId) return
     setSyncing(connId)
+    // Mark local state as syncing immediately
+    setSfConnections(prev => prev.map(c =>
+      c.id === connId ? { ...c, syncStatus: 'syncing' as SyncStatus } : c
+    ))
     fetch('/api/sync/snowflake', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -110,13 +122,18 @@ export function ConnectionsView({ workspaceId }: Props) {
     })
       .then(r => r.json())
       .then(d => {
-        if (d.ok) {
+        // Server returns { started: true } immediately — sync runs in background
+        if (!d.started) {
+          // Fallback: if something went wrong before background start, reset status
           setSfConnections(prev => prev.map(c =>
-            c.id === connId
-              ? { ...c, lastSync: new Date().toISOString(), recordCount: d.inserted ?? 0, syncStatus: 'idle' }
-              : c
+            c.id === connId ? { ...c, syncStatus: 'error' as SyncStatus } : c
           ))
         }
+      })
+      .catch(() => {
+        setSfConnections(prev => prev.map(c =>
+          c.id === connId ? { ...c, syncStatus: 'error' as SyncStatus } : c
+        ))
       })
       .finally(() => setSyncing(null))
   }
