@@ -37,15 +37,11 @@ function makeConnection(creds: SnowflakeCreds) {
   }
 
   if (creds.privateKey) {
-    const { createPrivateKey } = require('crypto') as typeof import('crypto')
-    const keyObject = createPrivateKey({
-      key:        creds.privateKey,
-      passphrase: creds.privateKeyPass || undefined,
-    })
     return snowflake.createConnection({
       ...base,
-      authenticator: 'SNOWFLAKE_JWT',
-      privateKey: keyObject,
+      authenticator:  'SNOWFLAKE_JWT',
+      privateKey:     creds.privateKey,
+      privateKeyPass: creds.privateKeyPass || undefined,
     })
   }
 
