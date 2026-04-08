@@ -23,9 +23,17 @@ export type SnowflakeMapping = {
   colTopic?: string
 }
 
+function normalizeAccount(account: string): string {
+  // Strip https:// prefix and .snowflakecomputing.com suffix if present
+  return account
+    .replace(/^https?:\/\//i, '')
+    .replace(/\.snowflakecomputing\.com\/?$/i, '')
+    .trim()
+}
+
 function makeConnection(creds: SnowflakeCreds) {
   return snowflake.createConnection({
-    account: creds.account,
+    account: normalizeAccount(creds.account),
     username: creds.username,
     password: creds.password,
     role: creds.role || undefined,
