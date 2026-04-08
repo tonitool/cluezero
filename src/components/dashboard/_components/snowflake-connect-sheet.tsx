@@ -189,7 +189,11 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
       })
       const data = await res.json()
       if (!data.ok) {
-        setDetectError(data.error ?? 'Connection failed')
+        const raw = data.error ?? 'Connection failed'
+        const friendlyError = raw.toLowerCase().includes('mfa')
+          ? 'This account requires MFA, which is not supported for programmatic access. Ask your Snowflake admin to create a service account with MFA policy bypass, or use key-pair authentication.'
+          : raw
+        setDetectError(friendlyError)
       } else {
         const cols: string[] = data.columns ?? []
         setDetectedColumns(cols)
