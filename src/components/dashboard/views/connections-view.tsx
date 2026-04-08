@@ -479,14 +479,29 @@ export function ConnectionsView({ workspaceId }: Props) {
                   </div>
 
                   <div className="flex flex-col gap-2 pt-1 border-t border-border">
-                    {isSyncing && conn.syncTotal != null && (
+                    {isSyncing && (
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                          <span>Importing records…</span>
-                          <span className="font-mono">{(conn.syncProgress ?? 0).toLocaleString()} / {conn.syncTotal.toLocaleString()}</span>
+                          {conn.syncTotal != null ? (
+                            <>
+                              <span>Importing records…</span>
+                              <span className="font-mono">{(conn.syncProgress ?? 0).toLocaleString()} / {conn.syncTotal.toLocaleString()}</span>
+                            </>
+                          ) : conn.syncProgress != null && conn.syncProgress > 0 ? (
+                            <>
+                              <span>Importing records…</span>
+                              <span className="font-mono">{conn.syncProgress.toLocaleString()} imported so far</span>
+                            </>
+                          ) : (
+                            <span>Fetching data from Snowflake…</span>
+                          )}
                         </div>
                         <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-[#29B5E8] rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                          {conn.syncTotal != null ? (
+                            <div className="h-full bg-[#29B5E8] rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                          ) : (
+                            <div className="h-full bg-[#29B5E8] rounded-full animate-pulse w-full" />
+                          )}
                         </div>
                       </div>
                     )}
