@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Reset rows stuck in 'syncing' for more than 30 minutes (crashed/timed-out jobs)
-  const staleThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  // Reset rows stuck in 'syncing' for more than 5 minutes (crashed/timed-out jobs)
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString()
   await admin
     .from('snowflake_connections')
     .update({ sync_status: 'idle', sync_progress: null, sync_total: null })

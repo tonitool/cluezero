@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   // Mark as syncing immediately so the UI can reflect it right away
   await db
     .from('snowflake_connections')
-    .update({ sync_status: 'syncing', sync_error: null })
+    .update({ sync_status: 'syncing', sync_error: null, sync_progress: null, sync_total: null })
     .eq('id', connectionId)
 
   // Run the actual sync in the background — response returns immediately
