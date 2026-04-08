@@ -141,7 +141,7 @@ export async function fetchSnowflakeRows(
       const whereClause = since
         ? `WHERE ${mapping.colDate} >= '${since}'`
         : ''
-      const sql = `SELECT * FROM ${fullTable} ${whereClause} ORDER BY ${mapping.colDate} ASC`
+      const sql = `SELECT * FROM ${fullTable} ${whereClause}`
 
       // Use streamResult:true — for large tables (70k+ rows) the SDK calls
       // complete() with rows=undefined and requires stmt.streamRows() to collect data
