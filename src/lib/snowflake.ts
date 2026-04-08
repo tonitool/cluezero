@@ -170,13 +170,24 @@ export async function fetchSnowflakeRows(
 
       conn.execute({
         sqlText: sql,
-        complete: (execErr, _stmt, rows) => {
-          conn.destroy(() => {})
+        complete: (execErr, stmt, rows) => {
           if (execErr) {
+            conn.destroy(() => {})
             resolve({ ok: false, error: execErr.message })
             return
           }
-          resolve({ ok: true, rows: (rows ?? []) as Record<string, unknown>[] })
+          // For large result sets the SDK may call complete with rows=undefined
+          // and require streaming via stmt.streamRows()
+          if (rows !== undefined) {
+            conn.destroy(() => {})
+            resolve({ ok: true, rows: rows as Record<string, unknown>[] })
+            return
+          }
+          const allRows: Record<string, unknown>[] = []
+          stmt.streamRows()
+            .on('data', (row: Record<string, unknown>) => allRows.push(row))
+            .on('end', () => { conn.destroy(() => {}); resolve({ ok: true, rows: allRows }) })
+            .on('error', (err: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: err.message }) })
         },
       })
     })
