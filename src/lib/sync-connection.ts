@@ -86,6 +86,14 @@ export async function syncConnection(
   const total = rows.length
   console.log(`[sync] Fetched ${total} rows from Snowflake`)
 
+  if (total === 0) {
+    await admin
+      .from('snowflake_connections')
+      .update({ sync_status: 'error', sync_error: 'Snowflake returned 0 rows — check table name, schema, and column mapping', updated_at: new Date().toISOString() })
+      .eq('id', connectionId)
+    return { ok: false, fetched: 0, inserted: 0, errors: ['Snowflake returned 0 rows'] }
+  }
+
   // ── 3. Map all rows upfront (normalizes dates via toISODate in mapRow) ─────
   const mappedRows = rows.map(raw => mapRow(raw, mapping))
 
@@ -187,11 +195,10 @@ export async function syncConnection(
       continue
     }
 
-    // Single batch ad upsert for this chunk (~1 query per 1,000 rows)
-    const { data: upsertedAds, error: adBatchErr } = await admin
+    // Batch upsert ads
+    const { error: adBatchErr } = await admin
       .from('ads')
       .upsert(adRows, { onConflict: 'workspace_id,platform,ad_id' })
-      .select('id, ad_id')
 
     if (adBatchErr) {
       errors.push(`Chunk ${chunkStart}–${chunkStart + chunk.length} ad upsert failed: ${adBatchErr.message}`)
@@ -203,9 +210,23 @@ export async function syncConnection(
       continue
     }
 
-    // Build ad_id text → uuid map from returned rows
+    // Fetch IDs back separately — more reliable than .select() on upsert for large batches
+    const chunkAdIds = validEntries.map(e => e.adId)
+    const { data: fetchedAds, error: fetchIdsErr } = await admin
+      .from('ads')
+      .select('id, ad_id')
+      .eq('workspace_id', workspaceId)
+      .in('ad_id', chunkAdIds)
+
+    if (fetchIdsErr) {
+      errors.push(`Chunk ${chunkStart} ID fetch failed: ${fetchIdsErr.message}`)
+      console.error('[sync] id fetch error:', fetchIdsErr)
+      continue
+    }
+
+    // Build ad_id text → uuid map
     const adIdToUuid = new Map<string, string>()
-    for (const ad of upsertedAds ?? []) {
+    for (const ad of fetchedAds ?? []) {
       adIdToUuid.set(ad.ad_id, ad.id)
     }
 
