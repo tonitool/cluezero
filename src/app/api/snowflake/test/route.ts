@@ -15,7 +15,8 @@ export async function POST(req: NextRequest) {
 
   const { creds, table, mapping } = body
 
-  if (!creds?.account || !creds?.username || !creds?.password || !creds?.warehouse) {
+  const hasAuth = creds?.password || creds?.privateKey
+  if (!creds?.account || !creds?.username || !hasAuth || !creds?.warehouse) {
     return NextResponse.json({ error: 'Missing required credential fields' }, { status: 400 })
   }
 

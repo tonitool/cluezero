@@ -39,13 +39,15 @@ export async function syncConnection(
     .eq('id', connectionId)
 
   const creds: SnowflakeCreds = {
-    account:   conn.account,
-    username:  conn.username,
-    password:  conn.password,
-    role:      conn.role ?? undefined,
-    warehouse: conn.warehouse,
-    database:  conn.database,
-    schema:    conn.schema,
+    account:        conn.account,
+    username:       conn.username,
+    password:       conn.password ?? undefined,
+    privateKey:     conn.private_key ?? undefined,
+    privateKeyPass: conn.private_key_pass ?? undefined,
+    role:           conn.role ?? undefined,
+    warehouse:      conn.warehouse,
+    database:       conn.database,
+    schema:         conn.schema,
   }
 
   const mapping: SnowflakeMapping = {

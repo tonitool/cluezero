@@ -3,7 +3,10 @@ import snowflake from 'snowflake-sdk'
 export type SnowflakeCreds = {
   account: string
   username: string
-  password: string
+  // One of password OR privateKey must be provided
+  password?: string
+  privateKey?: string      // PEM content of the RSA private key
+  privateKeyPass?: string  // passphrase if the private key is encrypted
   role?: string
   warehouse: string
   database: string
@@ -24,15 +27,29 @@ export type SnowflakeMapping = {
 }
 
 function makeConnection(creds: SnowflakeCreds) {
-  return snowflake.createConnection({
-    account: creds.account,
-    username: creds.username,
-    password: creds.password,
-    role: creds.role || undefined,
+  const base = {
+    account:   creds.account,
+    username:  creds.username,
+    role:      creds.role || undefined,
     warehouse: creds.warehouse,
-    database: creds.database,
-    schema: creds.schema,
-  })
+    database:  creds.database,
+    schema:    creds.schema,
+  }
+
+  if (creds.privateKey) {
+    const { createPrivateKey } = require('crypto') as typeof import('crypto')
+    const keyObject = createPrivateKey({
+      key:        creds.privateKey,
+      passphrase: creds.privateKeyPass || undefined,
+    })
+    return snowflake.createConnection({
+      ...base,
+      authenticator: 'SNOWFLAKE_JWT',
+      privateKey: keyObject,
+    })
+  }
+
+  return snowflake.createConnection({ ...base, password: creds.password })
 }
 
 export async function testSnowflakeConnection(

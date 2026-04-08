@@ -60,11 +60,15 @@ function SnowflakeLogo({ className }: { className?: string }) {
 
 type Step = 'credentials' | 'mapping' | 'success'
 
+type AuthMode = 'password' | 'keypair'
+
 type Credentials = {
   connectionName: string
   account: string
   username: string
   password: string
+  privateKey: string
+  privateKeyPass: string
   role: string
   warehouse: string
   database: string
@@ -124,8 +128,10 @@ interface Props {
 
 export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspaceId, editingConnectionId }: Props) {
   const [step, setStep] = useState<Step>('credentials')
+  const [authMode, setAuthMode] = useState<AuthMode>('password')
   const [creds, setCreds] = useState<Credentials>({
-    connectionName: '', account: '', username: '', password: '', role: '',
+    connectionName: '', account: '', username: '', password: '',
+    privateKey: '', privateKeyPass: '', role: '',
     warehouse: '', database: '', schema: '', table: '',
   })
   const [mapping, setMapping] = useState<Mapping>({
@@ -140,7 +146,8 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
 
   function resetSheet() {
     setStep('credentials')
-    setCreds({ connectionName: '', account: '', username: '', password: '', role: '', warehouse: '', database: '', schema: '', table: '' })
+    setAuthMode('password')
+    setCreds({ connectionName: '', account: '', username: '', password: '', privateKey: '', privateKeyPass: '', role: '', warehouse: '', database: '', schema: '', table: '' })
     setMapping({ brandCol: '', dateCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '' })
     setDetecting(false)
     setDetectError(null)
@@ -153,11 +160,15 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     onOpenChange(v)
   }
 
+  const authValid = authMode === 'password'
+    ? creds.password.trim()
+    : creds.privateKey.trim()
+
   const credsValid =
     creds.connectionName.trim() &&
     creds.account.trim() &&
     creds.username.trim() &&
-    creds.password.trim() &&
+    authValid &&
     creds.warehouse.trim() &&
     creds.database.trim() &&
     creds.schema.trim() &&
@@ -176,13 +187,15 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           creds: {
-            account:   creds.account,
-            username:  creds.username,
-            password:  creds.password,
-            role:      creds.role || undefined,
-            warehouse: creds.warehouse,
-            database:  creds.database,
-            schema:    creds.schema,
+            account:        creds.account,
+            username:       creds.username,
+            password:       authMode === 'password' ? creds.password : undefined,
+            privateKey:     authMode === 'keypair'  ? creds.privateKey : undefined,
+            privateKeyPass: authMode === 'keypair' && creds.privateKeyPass ? creds.privateKeyPass : undefined,
+            role:           creds.role || undefined,
+            warehouse:      creds.warehouse,
+            database:       creds.database,
+            schema:         creds.schema,
           },
           table: creds.table,
         }),
@@ -221,13 +234,15 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
             connectionId:   editingConnectionId,
             connectionName: creds.connectionName,
             creds: {
-              account:   creds.account,
-              username:  creds.username,
-              password:  creds.password,
-              role:      creds.role || undefined,
-              warehouse: creds.warehouse,
-              database:  creds.database,
-              schema:    creds.schema,
+              account:        creds.account,
+              username:       creds.username,
+              password:       authMode === 'password' ? creds.password : undefined,
+              privateKey:     authMode === 'keypair'  ? creds.privateKey : undefined,
+              privateKeyPass: authMode === 'keypair' && creds.privateKeyPass ? creds.privateKeyPass : undefined,
+              role:           creds.role || undefined,
+              warehouse:      creds.warehouse,
+              database:       creds.database,
+              schema:         creds.schema,
             },
             mapping: {
               table:          creds.table,
@@ -360,17 +375,65 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="sf-password" className="text-xs">Password <span className="text-rose-500">*</span></Label>
-                  <Input
-                    id="sf-password"
-                    type="password"
-                    placeholder="••••••••••••"
-                    className="h-8 text-sm"
-                    value={creds.password}
-                    onChange={e => setCreds(p => ({ ...p, password: e.target.value }))}
-                  />
+                {/* Auth mode toggle */}
+                <div className="flex items-center gap-1 p-0.5 bg-zinc-100 rounded-md w-fit">
+                  {(['password', 'keypair'] as AuthMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setAuthMode(mode)}
+                      className={cn(
+                        'px-3 py-1 rounded text-[11px] font-medium transition-colors',
+                        authMode === mode
+                          ? 'bg-white text-zinc-900 shadow-sm'
+                          : 'text-muted-foreground hover:text-zinc-700'
+                      )}
+                    >
+                      {mode === 'password' ? 'Password' : 'Key Pair'}
+                    </button>
+                  ))}
                 </div>
+
+                {authMode === 'password' && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="sf-password" className="text-xs">Password <span className="text-rose-500">*</span></Label>
+                    <Input
+                      id="sf-password"
+                      type="password"
+                      placeholder="••••••••••••"
+                      className="h-8 text-sm"
+                      value={creds.password}
+                      onChange={e => setCreds(p => ({ ...p, password: e.target.value }))}
+                    />
+                  </div>
+                )}
+
+                {authMode === 'keypair' && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="sf-private-key" className="text-xs">Private key (PEM) <span className="text-rose-500">*</span></Label>
+                      <textarea
+                        id="sf-private-key"
+                        placeholder={"-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"}
+                        className="min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-[11px] font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                        value={creds.privateKey}
+                        onChange={e => setCreds(p => ({ ...p, privateKey: e.target.value }))}
+                      />
+                      <p className="text-[11px] text-muted-foreground">Paste the contents of your <span className="font-mono">rsa_key.p8</span> file.</p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="sf-key-pass" className="text-xs">Key passphrase <span className="text-muted-foreground">(if encrypted)</span></Label>
+                      <Input
+                        id="sf-key-pass"
+                        type="password"
+                        placeholder="Leave blank if key is unencrypted"
+                        className="h-8 text-sm"
+                        value={creds.privateKeyPass}
+                        onChange={e => setCreds(p => ({ ...p, privateKeyPass: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                )}
               </fieldset>
 
               <fieldset className="flex flex-col gap-4">

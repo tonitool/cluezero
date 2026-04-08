@@ -37,12 +37,14 @@ export async function POST(req: NextRequest) {
   if (!membership) return NextResponse.json({ error: 'Not a workspace member' }, { status: 403 })
 
   const payload = {
-    workspace_id:    workspaceId,
-    connection_name: connectionName ?? null,
-    account:         creds.account,
-    username:        creds.username,
-    password:        creds.password,
-    role:            creds.role ?? null,
+    workspace_id:     workspaceId,
+    connection_name:  connectionName ?? null,
+    account:          creds.account,
+    username:         creds.username,
+    password:         creds.password ?? null,
+    private_key:      creds.privateKey ?? null,
+    private_key_pass: creds.privateKeyPass ?? null,
+    role:             creds.role ?? null,
     warehouse:       creds.warehouse,
     database:        creds.database,
     schema:          creds.schema,
