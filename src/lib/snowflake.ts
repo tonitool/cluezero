@@ -143,15 +143,22 @@ export async function fetchSnowflakeRows(
         : ''
       const sql = `SELECT * FROM ${fullTable} ${whereClause} ORDER BY ${mapping.colDate} ASC`
 
+      // Use streamResult:true — for large tables (70k+ rows) the SDK calls
+      // complete() with rows=undefined and requires stmt.streamRows() to collect data
       conn.execute({
         sqlText: sql,
-        complete: (execErr, _stmt, rows) => {
-          conn.destroy(() => {})
+        streamResult: true,
+        complete: (execErr, stmt) => {
           if (execErr) {
+            conn.destroy(() => {})
             resolve({ ok: false, error: execErr.message })
             return
           }
-          resolve({ ok: true, rows: (rows ?? []) as Record<string, unknown>[] })
+          const allRows: Record<string, unknown>[] = []
+          stmt.streamRows()
+            .on('data', (row: Record<string, unknown>) => allRows.push(row))
+            .on('end', () => { conn.destroy(() => {}); resolve({ ok: true, rows: allRows }) })
+            .on('error', (err: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: err.message }) })
         },
       })
     })
