@@ -84,6 +84,20 @@ export async function syncConnection(
   const rows = fetchResult.rows
   console.log(`[sync] Fetched ${rows.length} rows from Snowflake`)
 
+  if (rows.length === 0) {
+    await admin
+      .from('snowflake_connections')
+      .update({
+        sync_status:   'error',
+        sync_error:    'Snowflake returned 0 rows — check that the table has data and the column mapping is correct',
+        sync_progress: null,
+        sync_total:    null,
+        updated_at:    new Date().toISOString(),
+      })
+      .eq('id', connectionId)
+    return { ok: false, fetched: 0, inserted: 0, errors: ['Snowflake returned 0 rows'] }
+  }
+
   let inserted = 0
   const errors: string[] = []
   const connPrefix = connectionId.slice(0, 8)
