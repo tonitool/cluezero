@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   // Mark as syncing immediately so the UI can reflect it right away
   await db
     .from('snowflake_connections')
-    .update({ sync_status: 'syncing', sync_error: null, sync_progress: null, sync_total: null })
+    .update({ sync_status: 'syncing', sync_error: null })
     .eq('id', connectionId)
 
   // Run the actual sync in the background — response returns immediately
@@ -42,18 +42,13 @@ export async function POST(req: NextRequest) {
   after(async () => {
     try {
       const result = await syncConnection(connectionId, workspaceId)
-      const firstError = result.errors.length > 0 ? result.errors[0] : null
       await db
         .from('snowflake_connections')
         .update({
           sync_status:    'idle',
           last_synced_at: new Date().toISOString(),
           last_sync_rows: result.inserted ?? 0,
-          sync_error:     !result.ok
-            ? (firstError ?? 'Sync failed')
-            : result.inserted === 0 && firstError
-              ? firstError
-              : null,
+          sync_error:     result.ok ? null : (result.errors[0] ?? 'Sync failed'),
         })
         .eq('id', connectionId)
     } catch (err) {

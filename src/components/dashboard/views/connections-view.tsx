@@ -473,26 +473,24 @@ export function ConnectionsView({ workspaceId }: Props) {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 pt-1 border-t border-border">
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
-                        onClick={() => handleSync(conn.id)}
-                        disabled={isSyncing || isDisconnecting}>
-                        <RefreshCcw className={cn('size-3', isSyncing && 'animate-spin')} />
-                        {isSyncing ? 'Syncing…' : 'Sync Now'}
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs"
-                        onClick={() => openEditSheet(conn.id)}
-                        disabled={isSyncing || isDisconnecting}>
-                        Configure
-                      </Button>
-                      <Button variant="ghost" size="sm"
-                        className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 ml-auto"
-                        onClick={() => handleDisconnectSf(conn.id)}
-                        disabled={isSyncing || isDisconnecting}>
-                        {isDisconnecting ? 'Removing…' : 'Remove'}
-                      </Button>
-                    </div>
+                  <div className="flex items-center gap-2 pt-1 border-t border-border">
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
+                      onClick={() => handleSync(conn.id)}
+                      disabled={isSyncing || isDisconnecting}>
+                      <RefreshCcw className={cn('size-3', isSyncing && 'animate-spin')} />
+                      {isSyncing ? 'Syncing…' : 'Sync Now'}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs"
+                      onClick={() => openEditSheet(conn.id)}
+                      disabled={isSyncing || isDisconnecting}>
+                      Configure
+                    </Button>
+                    <Button variant="ghost" size="sm"
+                      className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 ml-auto"
+                      onClick={() => handleDisconnectSf(conn.id)}
+                      disabled={isSyncing || isDisconnecting}>
+                      {isDisconnecting ? 'Removing…' : 'Remove'}
+                    </Button>
                   </div>
                 </div>
               )

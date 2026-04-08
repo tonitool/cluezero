@@ -124,34 +124,10 @@ export async function sampleSnowflakeTable(
   })
 }
 
-export async function countSnowflakeRows(
-  creds: SnowflakeCreds,
-  mapping: SnowflakeMapping,
-  since?: string
-): Promise<{ ok: boolean; count?: number; error?: string }> {
-  return new Promise((resolve) => {
-    const conn = makeConnection(creds)
-    conn.connect((err) => {
-      if (err) { resolve({ ok: false, error: err.message }); return }
-      const fullTable = `${creds.database}.${creds.schema}.${mapping.table}`
-      const where = since ? `WHERE ${mapping.colDate} >= '${since}'` : ''
-      conn.execute({
-        sqlText: `SELECT COUNT(*) AS N FROM ${fullTable} ${where}`,
-        complete: (execErr, _stmt, rows) => {
-          conn.destroy(() => {})
-          if (execErr) { resolve({ ok: false, error: execErr.message }); return }
-          const row = (rows ?? [])[0] as Record<string, unknown> | undefined
-          const n = row ? Number(row['N'] ?? row['n'] ?? row['COUNT(*)'] ?? 0) : 0
-          resolve({ ok: true, count: n })
-        },
-      })
-    })
-  })
-}
-
 export async function fetchSnowflakeRows(
   creds: SnowflakeCreds,
   mapping: SnowflakeMapping,
+  since?: string  // ISO date, for incremental sync
 ): Promise<{ ok: boolean; rows?: Record<string, unknown>[]; error?: string }> {
   return new Promise((resolve) => {
     const conn = makeConnection(creds)
@@ -162,23 +138,20 @@ export async function fetchSnowflakeRows(
       }
 
       const fullTable = `${creds.database}.${creds.schema}.${mapping.table}`
-      const sql = `SELECT * FROM ${fullTable}`
+      const whereClause = since
+        ? `WHERE ${mapping.colDate} >= '${since}'`
+        : ''
+      const sql = `SELECT * FROM ${fullTable} ${whereClause} ORDER BY ${mapping.colDate} ASC`
 
-      // Always stream — avoids rows=undefined issue with large result sets
       conn.execute({
         sqlText: sql,
-        streamResult: true,
-        complete: (execErr, stmt) => {
+        complete: (execErr, _stmt, rows) => {
+          conn.destroy(() => {})
           if (execErr) {
-            conn.destroy(() => {})
             resolve({ ok: false, error: execErr.message })
             return
           }
-          const allRows: Record<string, unknown>[] = []
-          stmt.streamRows()
-            .on('data', (row: Record<string, unknown>) => allRows.push(row))
-            .on('end', () => { conn.destroy(() => {}); resolve({ ok: true, rows: allRows }) })
-            .on('error', (streamErr: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: streamErr.message }) })
+          resolve({ ok: true, rows: (rows ?? []) as Record<string, unknown>[] })
         },
       })
     })
