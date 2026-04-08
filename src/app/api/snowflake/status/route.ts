@@ -16,9 +16,18 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Reset rows stuck in 'syncing' for more than 30 minutes (crashed/timed-out jobs)
+  const staleThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  await admin
+    .from('snowflake_connections')
+    .update({ sync_status: 'idle', sync_progress: null, sync_total: null })
+    .eq('workspace_id', workspaceId)
+    .eq('sync_status', 'syncing')
+    .lt('updated_at', staleThreshold)
+
   const { data } = await admin
     .from('snowflake_connections')
-    .select('id, connection_name, table_name, last_synced_at, last_sync_rows, sync_status, sync_error')
+    .select('id, connection_name, table_name, last_synced_at, last_sync_rows, sync_status, sync_error, sync_progress, sync_total')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: true })
 
@@ -33,6 +42,8 @@ export async function GET(req: NextRequest) {
       recordCount:    c.last_sync_rows,
       syncStatus:     c.sync_status ?? 'idle',
       syncError:      c.sync_error,
+      syncProgress:   c.sync_progress ?? null,
+      syncTotal:      c.sync_total ?? null,
     })),
   })
 }
