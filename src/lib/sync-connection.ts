@@ -169,7 +169,7 @@ export async function syncConnection(
       }
 
       const adId = `${connPrefix}_sf_${r.brand}_${r.headline ?? 'unknown'}_${r.date}`
-        .replace(/\s+/g, '_').toLowerCase()
+        .toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 200)
 
       adRows.push({
         workspace_id:      workspaceId,
@@ -210,25 +210,30 @@ export async function syncConnection(
       continue
     }
 
-    // Fetch IDs back separately — more reliable than .select() on upsert for large batches
+    // Fetch IDs back in small batches — avoids URL-length limits and special-char issues in .in()
     const chunkAdIds = validEntries.map(e => e.adId)
-    const { data: fetchedAds, error: fetchIdsErr } = await admin
-      .from('ads')
-      .select('id, ad_id')
-      .eq('workspace_id', workspaceId)
-      .in('ad_id', chunkAdIds)
-
-    if (fetchIdsErr) {
-      errors.push(`Chunk ${chunkStart} ID fetch failed: ${fetchIdsErr.message}`)
-      console.error('[sync] id fetch error:', fetchIdsErr)
-      continue
-    }
-
-    // Build ad_id text → uuid map
     const adIdToUuid = new Map<string, string>()
-    for (const ad of fetchedAds ?? []) {
-      adIdToUuid.set(ad.ad_id, ad.id)
+    const SELECT_BATCH = 50
+    let fetchFailed = false
+    for (let si = 0; si < chunkAdIds.length; si += SELECT_BATCH) {
+      const batch = chunkAdIds.slice(si, si + SELECT_BATCH)
+      const { data: batchAds, error: batchErr } = await admin
+        .from('ads')
+        .select('id, ad_id')
+        .eq('workspace_id', workspaceId)
+        .in('ad_id', batch)
+      if (batchErr) {
+        errors.push(`Chunk ${chunkStart} ID fetch failed: ${batchErr.message}`)
+        console.error('[sync] id fetch error:', batchErr)
+        fetchFailed = true
+        break
+      }
+      for (const ad of batchAds ?? []) {
+        adIdToUuid.set(ad.ad_id, ad.id)
+      }
     }
+    if (fetchFailed) continue
+    console.log(`[sync] chunk ${chunkStart}: upserted ${adRows.length} ads, fetched back ${adIdToUuid.size} UUIDs`)
 
     // Collect enrichment + spend rows, deduplicated within chunk to avoid PK conflicts
     const enrichmentMap = new Map<string, Record<string, unknown>>()  // uuid → row
