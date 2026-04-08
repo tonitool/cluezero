@@ -138,27 +138,32 @@ export async function fetchSnowflakeRows(
       }
 
       const fullTable = `${creds.database}.${creds.schema}.${mapping.table}`
-      const whereClause = since
-        ? `WHERE ${mapping.colDate} >= '${since}'`
-        : ''
+      const whereClause = since ? `WHERE ${mapping.colDate} >= '${since}'` : ''
       const sql = `SELECT * FROM ${fullTable} ${whereClause}`
 
-      // Use streamResult:true — for large tables (70k+ rows) the SDK calls
-      // complete() with rows=undefined and requires stmt.streamRows() to collect data
+      // First verify the same session can see rows at all
       conn.execute({
-        sqlText: sql,
-        streamResult: true,
-        complete: (execErr, stmt) => {
-          if (execErr) {
-            conn.destroy(() => {})
-            resolve({ ok: false, error: execErr.message })
-            return
-          }
-          const allRows: Record<string, unknown>[] = []
-          stmt.streamRows()
-            .on('data', (row: Record<string, unknown>) => allRows.push(row))
-            .on('end', () => { conn.destroy(() => {}); resolve({ ok: true, rows: allRows }) })
-            .on('error', (err: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: err.message }) })
+        sqlText: `SELECT COUNT(*) AS N FROM ${fullTable}`,
+        complete: (cntErr, _cstmt, cntRows) => {
+          const n = cntRows ? Number((cntRows[0] as Record<string, unknown>)?.['N'] ?? 0) : 0
+          console.log(`[snowflake] same-session COUNT=${n}, err=${cntErr?.message ?? 'none'}`)
+
+          conn.execute({
+            sqlText: sql,
+            streamResult: true,
+            complete: (execErr, stmt) => {
+              if (execErr) {
+                conn.destroy(() => {})
+                resolve({ ok: false, error: execErr.message })
+                return
+              }
+              const allRows: Record<string, unknown>[] = []
+              stmt.streamRows()
+                .on('data', (row: Record<string, unknown>) => allRows.push(row))
+                .on('end', () => { conn.destroy(() => {}); resolve({ ok: true, rows: allRows }) })
+                .on('error', (err: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: err.message }) })
+            },
+          })
         },
       })
     })
