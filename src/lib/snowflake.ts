@@ -127,7 +127,7 @@ export async function sampleSnowflakeTable(
 export async function countSnowflakeRows(
   creds: SnowflakeCreds,
   mapping: SnowflakeMapping,
-  since?: string,
+  since?: string
 ): Promise<{ ok: boolean; count?: number; error?: string }> {
   return new Promise((resolve) => {
     const conn = makeConnection(creds)
@@ -152,7 +152,6 @@ export async function countSnowflakeRows(
 export async function fetchSnowflakeRows(
   creds: SnowflakeCreds,
   mapping: SnowflakeMapping,
-  since?: string  // ISO date, for incremental sync
 ): Promise<{ ok: boolean; rows?: Record<string, unknown>[]; error?: string }> {
   return new Promise((resolve) => {
     const conn = makeConnection(creds)
@@ -163,31 +162,23 @@ export async function fetchSnowflakeRows(
       }
 
       const fullTable = `${creds.database}.${creds.schema}.${mapping.table}`
-      const whereClause = since
-        ? `WHERE ${mapping.colDate} >= '${since}'`
-        : ''
-      const sql = `SELECT * FROM ${fullTable} ${whereClause} ORDER BY ${mapping.colDate} ASC`
+      const sql = `SELECT * FROM ${fullTable}`
 
+      // Always stream — avoids rows=undefined issue with large result sets
       conn.execute({
         sqlText: sql,
-        complete: (execErr, stmt, rows) => {
+        streamResult: true,
+        complete: (execErr, stmt) => {
           if (execErr) {
             conn.destroy(() => {})
             resolve({ ok: false, error: execErr.message })
-            return
-          }
-          // For large result sets the SDK may call complete with rows=undefined
-          // and require streaming via stmt.streamRows()
-          if (rows !== undefined) {
-            conn.destroy(() => {})
-            resolve({ ok: true, rows: rows as Record<string, unknown>[] })
             return
           }
           const allRows: Record<string, unknown>[] = []
           stmt.streamRows()
             .on('data', (row: Record<string, unknown>) => allRows.push(row))
             .on('end', () => { conn.destroy(() => {}); resolve({ ok: true, rows: allRows }) })
-            .on('error', (err: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: err.message }) })
+            .on('error', (streamErr: Error) => { conn.destroy(() => {}); resolve({ ok: false, error: streamErr.message }) })
         },
       })
     })

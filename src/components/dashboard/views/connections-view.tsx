@@ -45,8 +45,6 @@ interface SnowflakeConn {
   recordCount: number | null
   syncStatus: SyncStatus
   syncError: string | null
-  syncProgress: number | null
-  syncTotal: number | null
 }
 
 interface Props { workspaceId?: string }
@@ -436,9 +434,6 @@ export function ConnectionsView({ workspaceId }: Props) {
               const isSyncing = syncing === conn.id || conn.syncStatus === 'syncing'
               const isDisconnecting = disconnecting === conn.id
               const hasError = conn.syncStatus === 'error'
-              const pct = conn.syncTotal != null && conn.syncTotal > 0
-                ? Math.round(((conn.syncProgress ?? 0) / conn.syncTotal) * 100)
-                : 0
 
               return (
                 <div key={conn.id} className="bg-white rounded-lg border border-border shadow-sm p-5 flex flex-col gap-4">
@@ -479,38 +474,12 @@ export function ConnectionsView({ workspaceId }: Props) {
                   </div>
 
                   <div className="flex flex-col gap-2 pt-1 border-t border-border">
-                    {isSyncing && (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                          {conn.syncTotal != null ? (
-                            <>
-                              <span>Importing records…</span>
-                              <span className="font-mono">{(conn.syncProgress ?? 0).toLocaleString()} / {conn.syncTotal.toLocaleString()}</span>
-                            </>
-                          ) : conn.syncProgress != null && conn.syncProgress > 0 ? (
-                            <>
-                              <span>Importing records…</span>
-                              <span className="font-mono">{conn.syncProgress.toLocaleString()} imported so far</span>
-                            </>
-                          ) : (
-                            <span>Fetching data from Snowflake…</span>
-                          )}
-                        </div>
-                        <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
-                          {conn.syncTotal != null ? (
-                            <div className="h-full bg-[#29B5E8] rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                          ) : (
-                            <div className="h-full bg-[#29B5E8] rounded-full animate-pulse w-full" />
-                          )}
-                        </div>
-                      </div>
-                    )}
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs"
                         onClick={() => handleSync(conn.id)}
                         disabled={isSyncing || isDisconnecting}>
                         <RefreshCcw className={cn('size-3', isSyncing && 'animate-spin')} />
-                        {isSyncing ? (conn.syncTotal == null ? 'Fetching…' : 'Syncing…') : 'Sync Now'}
+                        {isSyncing ? 'Syncing…' : 'Sync Now'}
                       </Button>
                       <Button variant="ghost" size="sm" className="h-7 text-xs"
                         onClick={() => openEditSheet(conn.id)}

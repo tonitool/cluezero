@@ -1,11 +1,11 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { countSnowflakeRows, fetchSnowflakeRows, mapRow, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
+import { fetchSnowflakeRows, mapRow, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
 import { detectAlerts } from '@/lib/detect-alerts'
 
 function getWeekStart(dateStr: string): string {
   const d = new Date(dateStr)
   const day = d.getUTCDay()
-  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1) // Monday
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1)
   const monday = new Date(d)
   monday.setUTCDate(diff)
   return monday.toISOString().slice(0, 10)
@@ -20,7 +20,7 @@ export async function syncConnection(
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Load connection config
+  // 1. Load connection config
   const { data: conn, error: connErr } = await admin
     .from('snowflake_connections')
     .select('*')
@@ -29,13 +29,8 @@ export async function syncConnection(
     .single()
 
   if (connErr || !conn) {
-    return { ok: false, fetched: 0, inserted: 0, errors: ['No Snowflake connection configured'] }
+    return { ok: false, fetched: 0, inserted: 0, errors: ['Connection not found'] }
   }
-
-  await admin
-    .from('snowflake_connections')
-    .update({ sync_status: 'syncing', updated_at: new Date().toISOString() })
-    .eq('id', connectionId)
 
   const creds: SnowflakeCreds = {
     account:        conn.account,
@@ -62,58 +57,42 @@ export async function syncConnection(
     colTopic:       conn.col_topic ?? undefined,
   }
 
-  // Count rows first so the UI can show a total immediately
-  const countResult = await countSnowflakeRows(creds, mapping)
-  if (countResult.ok && countResult.count != null) {
-    await admin
-      .from('snowflake_connections')
-      .update({ sync_total: countResult.count, sync_progress: 0, updated_at: new Date().toISOString() })
-      .eq('id', connectionId)
-  }
-
-  const fetchResult = await fetchSnowflakeRows(creds, mapping, undefined)
+  // 2. Fetch all rows from Snowflake via streaming
+  console.log(`[sync] Fetching from ${creds.database}.${creds.schema}.${mapping.table}`)
+  const fetchResult = await fetchSnowflakeRows(creds, mapping)
 
   if (!fetchResult.ok || !fetchResult.rows) {
     await admin
       .from('snowflake_connections')
-      .update({ sync_status: 'error', sync_error: fetchResult.error, updated_at: new Date().toISOString() })
+      .update({ sync_status: 'error', sync_error: fetchResult.error ?? 'Fetch failed', updated_at: new Date().toISOString() })
       .eq('id', connectionId)
     return { ok: false, fetched: 0, inserted: 0, errors: [fetchResult.error ?? 'Fetch failed'] }
   }
 
   const rows = fetchResult.rows
-  console.log(`[sync] Fetched ${rows.length} rows from Snowflake`)
+  console.log(`[sync] Fetched ${rows.length} rows`)
 
   if (rows.length === 0) {
     await admin
       .from('snowflake_connections')
-      .update({
-        sync_status:   'error',
-        sync_error:    'Snowflake returned 0 rows — check that the table has data and the column mapping is correct',
-        sync_progress: null,
-        sync_total:    null,
-        updated_at:    new Date().toISOString(),
-      })
+      .update({ sync_status: 'error', sync_error: 'Snowflake returned 0 rows — check table name and column mapping', updated_at: new Date().toISOString() })
       .eq('id', connectionId)
-    return { ok: false, fetched: 0, inserted: 0, errors: ['Snowflake returned 0 rows'] }
+    return { ok: false, fetched: 0, inserted: 0, errors: ['0 rows returned'] }
   }
 
+  // 3. Insert rows one by one
   let inserted = 0
   const errors: string[] = []
   const connPrefix = connectionId.slice(0, 8)
   const validStages = ['See', 'Think', 'Do', 'Care']
-  const PROGRESS_INTERVAL = 500 // update progress bar every N rows
 
-  for (let i = 0; i < rows.length; i++) {
-    const r = mapRow(rows[i], mapping)
+  for (const raw of rows) {
+    const r = mapRow(raw, mapping)
 
-    if (!r.brand || !r.date) {
-      errors.push(`Skipped row: missing brand (${r.brand}) or date (${r.date})`)
-      continue
-    }
+    if (!r.brand || !r.date) continue
 
-    // Find or create brand (case-insensitive match)
-    let brand: { id: string } | null = null
+    // Find or create brand
+    let brandId: string | null = null
     const { data: existing } = await admin
       .from('tracked_brands')
       .select('id')
@@ -123,33 +102,24 @@ export async function syncConnection(
       .maybeSingle()
 
     if (existing?.id) {
-      brand = existing
+      brandId = existing.id
     } else {
-      const { data: brandInserted, error: brandErr } = await admin
+      const { data: created, error: brandErr } = await admin
         .from('tracked_brands')
         .insert({ workspace_id: workspaceId, name: r.brand, platform: 'snowflake', is_own_brand: false })
         .select('id')
         .single()
       if (brandErr) {
-        errors.push(`Brand insert failed for "${r.brand}": ${brandErr.message}`)
-        console.error(`[sync] brand insert error:`, brandErr)
+        errors.push(`Brand insert failed: ${brandErr.message}`)
+      } else {
+        brandId = created?.id ?? null
       }
-      brand = brandInserted
     }
 
-    if (!brand?.id) continue
+    if (!brandId) continue
 
-    // Normalise date
-    const rawDate = r.date
-    let isoDate: string
-    if ((rawDate as unknown) instanceof Date) {
-      isoDate = (rawDate as unknown as Date).toISOString().slice(0, 10)
-    } else {
-      const d = new Date(String(rawDate))
-      isoDate = isNaN(d.getTime()) ? String(rawDate) : d.toISOString().slice(0, 10)
-    }
-
-    const adId = `${connPrefix}_sf_${r.brand}_${r.headline ?? 'unknown'}_${isoDate}`
+    // Upsert ad
+    const adId = `${connPrefix}_sf_${r.brand}_${r.headline ?? 'unknown'}_${r.date}`
       .replace(/\s+/g, '_').toLowerCase()
 
     const { data: ad, error: adErr } = await admin
@@ -157,14 +127,14 @@ export async function syncConnection(
       .upsert(
         {
           workspace_id:      workspaceId,
-          brand_id:          brand.id,
+          brand_id:          brandId,
           platform:          'meta',
           ad_id:             adId,
           headline:          r.headline,
           performance_index: r.performanceIndex,
           topic:             r.topic,
-          first_seen_at:     isoDate,
-          last_seen_at:      isoDate,
+          first_seen_at:     r.date,
+          last_seen_at:      r.date,
           is_active:         true,
           connection_id:     connectionId,
         },
@@ -173,13 +143,12 @@ export async function syncConnection(
       .select('id')
       .single()
 
-    if (adErr) {
-      errors.push(`Ad upsert failed for "${r.brand}": ${adErr.message}`)
-      console.error(`[sync] ad upsert error:`, adErr)
+    if (adErr || !ad?.id) {
+      errors.push(`Ad upsert failed: ${adErr?.message}`)
+      continue
     }
-    if (!ad?.id) continue
 
-    // Enrichment (funnel stage)
+    // Enrichment
     if (r.funnelStage) {
       const stage = validStages.find(s => s.toLowerCase() === r.funnelStage?.toLowerCase())
       if (stage) {
@@ -190,63 +159,45 @@ export async function syncConnection(
       }
     }
 
-    // Spend estimate
+    // Spend
     if (r.spend != null || r.impressions != null || r.reach != null) {
-      const weekStart = getWeekStart(isoDate)
       await admin.from('ad_spend_estimates').upsert(
-        {
-          ad_id:           ad.id,
-          week_start:      weekStart,
-          est_spend_eur:   r.spend,
-          est_impressions: r.impressions,
-          est_reach:       r.reach,
-        },
+        { ad_id: ad.id, week_start: getWeekStart(r.date), est_spend_eur: r.spend, est_impressions: r.impressions, est_reach: r.reach },
         { onConflict: 'ad_id,week_start' }
       )
     }
 
     inserted++
 
-    // Update progress bar every PROGRESS_INTERVAL rows
-    if (inserted % PROGRESS_INTERVAL === 0) {
-      await admin
-        .from('snowflake_connections')
-        .update({ sync_progress: inserted, updated_at: new Date().toISOString() })
-        .eq('id', connectionId)
+    if (inserted % 100 === 0) {
+      console.log(`[sync] ${inserted} / ${rows.length} inserted`)
     }
   }
 
-  // Refresh weekly_metrics
-  const affectedWeeks = [...new Set(
-    rows.map(r => {
-      const raw = mapRow(r, mapping).date
-      const d = (raw as unknown) instanceof Date ? (raw as unknown as Date) : new Date(String(raw))
-      return getWeekStart(isNaN(d.getTime()) ? String(raw) : d.toISOString().slice(0, 10))
-    })
-  )]
-  for (const week of affectedWeeks) {
+  console.log(`[sync] Done: ${inserted} inserted, ${errors.length} errors`)
+
+  // 4. Refresh weekly metrics
+  const weeks = [...new Set(rows.map(raw => {
+    const d = mapRow(raw, mapping).date
+    return getWeekStart(d)
+  }).filter(Boolean))]
+  for (const week of weeks) {
     await admin.rpc('refresh_weekly_metrics', { ws_id: workspaceId, week })
   }
 
-  // Mark sync complete
+  // 5. Mark complete
   await admin
     .from('snowflake_connections')
     .update({
       sync_status:    'idle',
-      sync_error:     null,
-      sync_progress:  null,
-      sync_total:     null,
+      sync_error:     errors.length > 0 ? errors[0] : null,
       last_synced_at: new Date().toISOString(),
       last_sync_rows: inserted,
       updated_at:     new Date().toISOString(),
     })
     .eq('id', connectionId)
 
-  try {
-    await detectAlerts(workspaceId)
-  } catch (err) {
-    console.error('[sync] detectAlerts failed:', err)
-  }
+  try { await detectAlerts(workspaceId) } catch (e) { console.error('[sync] detectAlerts failed:', e) }
 
   return { ok: true, fetched: rows.length, inserted, errors }
 }
