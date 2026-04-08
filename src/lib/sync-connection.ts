@@ -62,11 +62,8 @@ export async function syncConnection(
     colTopic:       conn.col_topic ?? undefined,
   }
 
-  // ── 2. Use last_synced_at for incremental sync (skip rows already imported) ─
-  const since = conn.last_synced_at ? conn.last_synced_at.slice(0, 10) : undefined
-
-  // ── 3. Count rows first so UI can show total immediately ───────────────────
-  const countResult = await countSnowflakeRows(creds, mapping, since)
+  // ── 2. Count rows first so UI can show total immediately ───────────────────
+  const countResult = await countSnowflakeRows(creds, mapping)
   if (countResult.ok && countResult.count != null) {
     await admin
       .from('snowflake_connections')
@@ -74,8 +71,8 @@ export async function syncConnection(
       .eq('id', connectionId)
   }
 
-  // ── 4. Fetch rows from Snowflake (incremental after first sync) ────────────
-  const fetchResult = await fetchSnowflakeRows(creds, mapping, since)
+  // ── 3. Fetch all rows (upserts handle duplicates, no date filter needed) ───
+  const fetchResult = await fetchSnowflakeRows(creds, mapping, undefined)
 
   if (!fetchResult.ok || !fetchResult.rows) {
     await admin
