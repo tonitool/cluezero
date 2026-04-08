@@ -124,6 +124,31 @@ export async function sampleSnowflakeTable(
   })
 }
 
+export async function countSnowflakeRows(
+  creds: SnowflakeCreds,
+  mapping: SnowflakeMapping,
+  since?: string,
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  return new Promise((resolve) => {
+    const conn = makeConnection(creds)
+    conn.connect((err) => {
+      if (err) { resolve({ ok: false, error: err.message }); return }
+      const fullTable = `${creds.database}.${creds.schema}.${mapping.table}`
+      const where = since ? `WHERE ${mapping.colDate} >= '${since}'` : ''
+      conn.execute({
+        sqlText: `SELECT COUNT(*) AS N FROM ${fullTable} ${where}`,
+        complete: (execErr, _stmt, rows) => {
+          conn.destroy(() => {})
+          if (execErr) { resolve({ ok: false, error: execErr.message }); return }
+          const row = (rows ?? [])[0] as Record<string, unknown> | undefined
+          const n = row ? Number(row['N'] ?? row['n'] ?? row['COUNT(*)'] ?? 0) : 0
+          resolve({ ok: true, count: n })
+        },
+      })
+    })
+  })
+}
+
 export async function fetchSnowflakeRows(
   creds: SnowflakeCreds,
   mapping: SnowflakeMapping,

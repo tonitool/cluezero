@@ -1,5 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { fetchSnowflakeRows, mapRow, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
+import { countSnowflakeRows, fetchSnowflakeRows, mapRow, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
 import { detectAlerts } from '@/lib/detect-alerts'
 
 function getWeekStart(dateStr: string): string {
@@ -62,8 +62,20 @@ export async function syncConnection(
     colTopic:       conn.col_topic ?? undefined,
   }
 
-  // ── 2. Fetch all rows from Snowflake ───────────────────────────────────────
-  const fetchResult = await fetchSnowflakeRows(creds, mapping, undefined)
+  // ── 2. Use last_synced_at for incremental sync (skip rows already imported) ─
+  const since = conn.last_synced_at ? conn.last_synced_at.slice(0, 10) : undefined
+
+  // ── 3. Count rows first so UI can show total immediately ───────────────────
+  const countResult = await countSnowflakeRows(creds, mapping, since)
+  if (countResult.ok && countResult.count != null) {
+    await admin
+      .from('snowflake_connections')
+      .update({ sync_total: countResult.count, sync_progress: 0, updated_at: new Date().toISOString() })
+      .eq('id', connectionId)
+  }
+
+  // ── 4. Fetch rows from Snowflake (incremental after first sync) ────────────
+  const fetchResult = await fetchSnowflakeRows(creds, mapping, since)
 
   if (!fetchResult.ok || !fetchResult.rows) {
     await admin
@@ -76,11 +88,6 @@ export async function syncConnection(
   const rows = fetchResult.rows
   const total = rows.length
   console.log(`[sync] Fetched ${total} rows from Snowflake`)
-
-  await admin
-    .from('snowflake_connections')
-    .update({ sync_total: total, sync_progress: 0, updated_at: new Date().toISOString() })
-    .eq('id', connectionId)
 
   // ── 3. Map all rows upfront (normalizes dates via toISODate in mapRow) ─────
   const mappedRows = rows.map(raw => mapRow(raw, mapping))
