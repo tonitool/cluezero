@@ -42,13 +42,18 @@ export async function POST(req: NextRequest) {
   after(async () => {
     try {
       const result = await syncConnection(connectionId, workspaceId)
+      const firstError = result.errors.length > 0 ? result.errors[0] : null
       await db
         .from('snowflake_connections')
         .update({
           sync_status:    'idle',
           last_synced_at: new Date().toISOString(),
           last_sync_rows: result.inserted ?? 0,
-          sync_error:     result.ok ? null : (result.errors[0] ?? 'Sync failed'),
+          sync_error:     !result.ok
+            ? (firstError ?? 'Sync failed')
+            : result.inserted === 0 && firstError
+              ? firstError
+              : null,
         })
         .eq('id', connectionId)
     } catch (err) {
