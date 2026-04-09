@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
       ad_enrichments ( funnel_stage )`)
     .eq('workspace_id', workspaceId)
   if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
+  adsQuery = adsQuery.limit(50000)
   const { data: rows, error } = await adsQuery
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

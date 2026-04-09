@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
     .eq('workspace_id', workspaceId)
 
   if (connectionId) q = q.eq('connection_id', connectionId)
+  q = q.limit(50000)
 
   const { data: rows, error } = await q
   if (error) {
