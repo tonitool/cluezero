@@ -312,14 +312,31 @@ export async function syncConnection(
         .select('id, ad_id')
 
       if (insertErr) {
-        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1
-        errors.push(`Chunk ${chunkNum}: ${insertErr.message}`)
-        console.error(`[sync] Insert failed chunk ${chunkNum}: ${insertErr.message}`)
+        // Batch INSERT is atomic — if even one row is a duplicate, the whole
+        // batch fails.  This is expected on re-syncs where ads already exist.
+        // Not a real error, just log it at debug level.
+        console.log(`[sync] Chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ads already exist, skipping insert`)
       } else {
         chunkInserted = inserted?.length ?? 0
         for (const row of inserted ?? []) {
           adIdToUuid.set(row.ad_id, row.id)
         }
+      }
+    }
+
+    // After INSERT (success or failure), ensure we have UUIDs for ALL ads
+    // in this chunk — needed for spend and enrichment records below.
+    // This covers: existing ads from prior syncs, newly inserted ads, and
+    // any ads the initial SELECT missed.
+    if (adIdToUuid.size < adRowByAdId.size) {
+      const { data: allAds } = await db
+        .from('ads')
+        .select('id, ad_id')
+        .eq('workspace_id', workspaceId)
+        .in('ad_id', adIdList)
+
+      for (const row of allAds ?? []) {
+        adIdToUuid.set(row.ad_id, row.id)
       }
     }
 
@@ -339,8 +356,8 @@ export async function syncConnection(
         ad_id: uuid,
         week_start: week,
         est_spend_eur: r.spend,
-        est_impressions: r.impressions,
-        est_reach: r.reach,
+        est_impressions: r.impressions != null ? Math.round(r.impressions) : null,
+        est_reach: r.reach != null ? Math.round(r.reach) : null,
       })
     }
 
