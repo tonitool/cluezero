@@ -431,15 +431,33 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ws-own-brand" className="text-xs">Brand name <span className="text-muted-foreground font-normal">(as it appears in ad data)</span></Label>
-              <Input
-                id="ws-own-brand"
-                value={wsOwnBrand}
-                onChange={e => setWsOwnBrand(e.target.value)}
-                placeholder="e.g. Apple, Nike, Volkswagen"
-                className="h-8 text-sm"
-              />
-              <p className="text-[11px] text-muted-foreground">Used in charts and the Brand Deep Dive view.</p>
+              <Label htmlFor="ws-own-brand" className="text-xs">Your brand <span className="text-muted-foreground font-normal">(select from synced data)</span></Label>
+              {brands.length > 0 ? (
+                <select
+                  id="ws-own-brand"
+                  value={wsOwnBrand}
+                  onChange={e => setWsOwnBrand(e.target.value)}
+                  className="h-8 text-sm rounded-md border border-input bg-background px-3 focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">— select your brand —</option>
+                  {brands.map(b => (
+                    <option key={b.name} value={b.name}>{b.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  id="ws-own-brand"
+                  value={wsOwnBrand}
+                  onChange={e => setWsOwnBrand(e.target.value)}
+                  placeholder="Sync data first, then select your brand"
+                  className="h-8 text-sm"
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                {brands.length > 0
+                  ? 'Select the brand that belongs to you — used in "Brand vs Market" charts and the Brand Deep Dive view.'
+                  : 'Sync your Snowflake connection first to see brand options here.'}
+              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">

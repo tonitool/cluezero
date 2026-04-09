@@ -179,8 +179,11 @@ export async function GET(req: NextRequest) {
   }, { meta: 0, google: 0, linkedin: 0 })
   const allPlatTotal = allPlatCounts.meta + allPlatCounts.google + allPlatCounts.linkedin
 
-  // Find own brand key dynamically from workspace config
-  const ownBrandBKey = brands.find(b => b.includes(ownBrandKey) || ownBrandKey.includes(b)) ?? brands[0] ?? ''
+  // Find own brand key dynamically from workspace config — exact first, then fuzzy
+  const ownBrandBKey = brands.find(b => b === ownBrandKey)
+    ?? brands.find(b => b.includes(ownBrandKey) || ownBrandKey.includes(b))
+    ?? brands[0]
+    ?? ''
   const ownBrandLabel = brandNames[ownBrandBKey] ?? ownBrandBKey.toUpperCase()
   const ownPlat = brandPlatformCounts[ownBrandBKey] ?? {}
   const ownPlatTotal = Object.values(ownPlat).reduce((s, v) => s + v, 0)

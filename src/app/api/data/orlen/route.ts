@@ -70,7 +70,11 @@ export async function GET(req: NextRequest) {
   }
 
   // Find which stored brand key matches the user's own brand
-  const ownKey = brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b)) ?? brands[0] ?? 'orlen'
+  // Exact match first (own_brand now stores exact name from dropdown), then fuzzy
+  const ownKey = brands.find(b => b === ownBrandParam)
+    ?? brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b))
+    ?? brands[0]
+    ?? 'orlen'
 
   const competitors = brands.filter(b => b !== ownKey)
   const marketAvgAds = competitors.length > 0

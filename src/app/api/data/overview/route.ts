@@ -113,7 +113,12 @@ export async function GET(req: NextRequest) {
   const prevWeek = sortedWeeks[sortedWeeks.length - 2] ?? null
 
   // Must be defined before performanceTrend which references it
-  const ownKey = brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b)) ?? brands[0] ?? ''
+  // Exact match first (workspace own_brand now stores exact brand name from dropdown),
+  // then fuzzy, then fall back to first brand alphabetically
+  const ownKey = brands.find(b => b === ownBrandParam)
+    ?? brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b))
+    ?? brands[0]
+    ?? ''
 
   const weeklySpendMovement = sortedWeeks.map(week => {
     const row: Record<string, unknown> = { week: formatWeek(week) }
