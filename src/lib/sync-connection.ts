@@ -179,10 +179,13 @@ export async function syncConnection(
     // Build ad rows for this chunk — use a Map keyed by conflict key so
     // duplicates within the same chunk are collapsed (last row wins, which
     // carries the most-recent spend/PI values from Snowflake's ordering).
-    // Also keep a parallel sourceRow map so the enrichment/spend loop has
-    // the original mapped row without a reverse scan.
-    const adRowMap    = new Map<string, Record<string, unknown>>()
-    const sourceRowMap = new Map<string, typeof mappedRows[0]>() // adId → mapped row
+    //
+    // IMPORTANT: The Snowflake view is a monthly snapshot, so the same ad
+    // appears once per month.  We must collect ALL rows for spend (not just
+    // the last one per ad) while still deduplicating the core ad record.
+    const adRowMap       = new Map<string, Record<string, unknown>>()
+    const enrichmentRowMap = new Map<string, typeof mappedRows[0]>() // adId → last row (for funnel stage; doesn't change month-to-month)
+    const spendEntries: Array<{ adId: string; r: typeof mappedRows[0] }> = [] // ALL rows — one spend entry per month per ad
 
     for (const r of chunk) {
       if (!r.brand || !r.date) {
@@ -236,7 +239,8 @@ export async function syncConnection(
       if (r.format?.trim())        adPayload.format_type     = r.format.trim()
 
       adRowMap.set(conflictKey, adPayload)
-      sourceRowMap.set(adId, r) // last-wins, consistent with adRowMap
+      enrichmentRowMap.set(adId, r)  // last-wins is fine; funnel stage doesn't vary by month
+      spendEntries.push({ adId, r }) // collect ALL rows so every month gets a spend record
     }
 
     const adRows = [...adRowMap.values()]
@@ -270,6 +274,7 @@ export async function syncConnection(
 
     // Step B — insert only rows that don't exist yet
     const newAdRows = adRows.filter(r => !existingAdIdSet.has(r.ad_id as string))
+    let chunkInserted = 0
     if (newAdRows.length > 0) {
       const { data: insertedAds, error: insertErr } = await admin
         .from('ads')
@@ -283,19 +288,20 @@ export async function syncConnection(
         // for the pre-existing ads we already have in adIdMap.
         console.warn(`[sync] Insert failed chunk ${chunkNum}, continuing with existing ads only`)
       } else {
+        chunkInserted = insertedAds?.length ?? 0
         for (const a of insertedAds ?? []) adIdMap.set(a.ad_id, a.id)
       }
     }
 
-    // Build enrichment + spend from deduplicated source rows (no chunk scan needed)
+    // Build enrichment + spend maps
     const enrichmentMap = new Map<string, Record<string, unknown>>() // uuid → row
     const spendMap      = new Map<string, Record<string, unknown>>() // `uuid::week` → row
 
-    for (const [adId, r] of sourceRowMap) {
+    // Enrichment: funnel stage — iterate deduplicated map (last-wins per ad is fine)
+    for (const [adId, r] of enrichmentRowMap) {
       const uuid = adIdMap.get(adId)
       if (!uuid) continue
 
-      // Enrichment: funnel stage
       if (r.funnelStage) {
         const norm = r.funnelStage.toLowerCase()
         if (validStages.has(norm)) {
@@ -303,8 +309,15 @@ export async function syncConnection(
           enrichmentMap.set(uuid, { ad_id: uuid, funnel_stage: stage })
         }
       }
+    }
 
-      // Spend estimate
+    // Spend: iterate ALL rows so every Snowflake month gets its own spend record.
+    // The map key is uuid::weekStart which naturally deduplicates if the same
+    // ad×week appears more than once in a chunk.
+    for (const { adId, r } of spendEntries) {
+      const uuid = adIdMap.get(adId)
+      if (!uuid) continue
+
       if (r.spend != null || r.impressions != null || r.reach != null) {
         const weekStart = getWeekStart(r.date)
         const spendKey = `${uuid}::${weekStart}`
@@ -332,7 +345,8 @@ export async function syncConnection(
         .upsert([...spendMap.values()], { onConflict: 'ad_id,week_start' })
     }
 
-    inserted  += adRows.length
+    // Count only genuinely new rows successfully inserted this chunk
+    inserted  += chunkInserted
     processed += chunk.length
 
     // Progress update once per chunk
