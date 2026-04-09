@@ -356,8 +356,8 @@ export async function syncConnection(
         ad_id: uuid,
         week_start: week,
         est_spend_eur: r.spend,
-        est_impressions: r.impressions != null ? Math.round(r.impressions) : null,
-        est_reach: r.reach != null ? Math.round(r.reach) : null,
+        est_impressions: r.impressions,
+        est_reach: r.reach,
       })
     }
 
