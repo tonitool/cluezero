@@ -269,25 +269,20 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
         </div>
       </div>
 
+      {/* SQL widgets inline */}
       {sqlWidgets.length > 0 && (
-        <div className="mt-8">
-          <div className="flex items-center gap-3 my-6">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Custom widgets</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {sqlWidgets.map(w => (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+          {sqlWidgets.map(w => (
+            <div key={w.id} className={w.colSpan === 2 ? 'col-span-2' : 'col-span-1'}>
               <SqlWidgetCard
-                key={w.id}
                 config={w}
                 workspaceId={workspaceId ?? ''}
                 editMode={editMode}
                 onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
                 onDelete={() => wc.deleteWidget(w.id)}
               />
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
 

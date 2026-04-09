@@ -59,7 +59,6 @@ export function SqlWidgetCard({ config, workspaceId, editMode, onEdit, onDelete 
     <div className={cn(
       'bg-white rounded-xl border border-border shadow-sm overflow-hidden',
       'transition-shadow hover:shadow-md',
-      config.colSpan === 2 ? 'col-span-2' : 'col-span-1',
     )}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3 gap-3">

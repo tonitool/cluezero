@@ -156,6 +156,47 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
     )
   }
 
+  /** Render any SQL widgets whose position falls between `after` and `before` */
+  function renderInlineSql(afterBuiltin: string, beforeBuiltin?: string) {
+    const afterPos = wc.configs.find(c => c.widgetId === afterBuiltin)?.position ?? -1
+    const beforePos = beforeBuiltin
+      ? (wc.configs.find(c => c.widgetId === beforeBuiltin)?.position ?? Infinity)
+      : Infinity
+    return sqlWidgets
+      .filter(sw => sw.position > afterPos && sw.position < beforePos)
+      .map(sw => (
+        <W key={sw.widgetId} id={sw.widgetId} colSpan={sw.colSpan ?? 1}>
+          <SqlWidgetCard
+            config={sw}
+            workspaceId={workspaceId ?? ''}
+            editMode={editMode}
+            onEdit={() => { setEditingWidget(sw); setShowAddSheet(true) }}
+            onDelete={() => wc.deleteWidget(sw.id)}
+          />
+        </W>
+      ))
+  }
+
+  /** Render SQL widgets that come after the last built-in widget */
+  function renderTrailingSql() {
+    const builtinIds = wc.configs.filter(c => c.type === 'builtin').map(c => c.widgetId)
+    const lastBuiltinPos = Math.max(...wc.configs.filter(c => c.type === 'builtin').map(c => c.position), -1)
+    return sqlWidgets
+      .filter(sw => sw.position >= lastBuiltinPos)
+      .filter(sw => !builtinIds.includes(sw.widgetId))
+      .map(sw => (
+        <W key={sw.widgetId} id={sw.widgetId} colSpan={sw.colSpan ?? 1}>
+          <SqlWidgetCard
+            config={sw}
+            workspaceId={workspaceId ?? ''}
+            editMode={editMode}
+            onEdit={() => { setEditingWidget(sw); setShowAddSheet(true) }}
+            onDelete={() => wc.deleteWidget(sw.id)}
+          />
+        </W>
+      ))
+  }
+
   return (
     <div>
       <SectionHeader title="Market Overview" description="Executive KPIs, spend movement, and weekly market activity" />
@@ -344,24 +385,10 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
             </W>
           </div>
 
-          {/* SQL Widgets */}
-          {sqlWidgets.length > 0 && (
-            <>
-              <SubSection label="Custom widgets" />
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {sqlWidgets.map(w => (
-                  <SqlWidgetCard
-                    key={w.id}
-                    config={w}
-                    workspaceId={workspaceId ?? ''}
-                    editMode={editMode}
-                    onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
-                    onDelete={() => wc.deleteWidget(w.id)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+          {/* Trailing SQL widgets (after all built-in widgets) */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+            {renderTrailingSql()}
+          </div>
 
         </SortableContext>
       </DndContext>
