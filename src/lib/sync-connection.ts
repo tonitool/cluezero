@@ -358,18 +358,10 @@ export async function syncConnection(
     } catch (_) {}
   }
 
-  // ── Step 5: Refresh weekly metrics for affected weeks ─────────────────────
-  const affectedWeeks = [...new Set(
-    mappedRows
-      .filter(r => r.date)
-      .map(r => getWeekStart(r.date))
-  )]
-
-  for (const week of affectedWeeks) {
-    await admin.rpc('refresh_weekly_metrics', { ws_id: workspaceId, week })
-  }
-
-  // ── Step 6: Final status update ───────────────────────────────────────────
+  // ── Step 5: Final status update ───────────────────────────────────────────
+  // NOTE: refresh_weekly_metrics is intentionally skipped — no dashboard route
+  // reads from weekly_metrics (they query ads + ad_spend_estimates directly).
+  // Running it per-week was the primary cause of syncs appearing "stuck".
   await admin
     .from('snowflake_connections')
     .update({
@@ -383,12 +375,8 @@ export async function syncConnection(
     })
     .eq('id', connectionId)
 
-  // Run alert detection after a successful sync
-  try {
-    await detectAlerts(workspaceId)
-  } catch (err) {
-    console.error('[sync] detectAlerts failed:', err)
-  }
+  // Run alert detection fire-and-forget — don't let it delay the sync completing
+  detectAlerts(workspaceId).catch(err => console.error('[sync] detectAlerts failed:', err))
 
   return { ok: true, fetched: rawRows.length, inserted, errors }
 }

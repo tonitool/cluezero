@@ -31,10 +31,20 @@ export async function POST(req: NextRequest) {
 
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Guard: reject if already syncing so we don't pile up concurrent runs
+  const { data: conn } = await db
+    .from('snowflake_connections')
+    .select('sync_status')
+    .eq('id', connectionId)
+    .single()
+  if (conn?.sync_status === 'syncing') {
+    return NextResponse.json({ started: false, reason: 'already_syncing' })
+  }
+
   // Mark as syncing immediately so the UI can reflect it right away
   await db
     .from('snowflake_connections')
-    .update({ sync_status: 'syncing', sync_error: null })
+    .update({ sync_status: 'syncing', sync_error: null, sync_progress: null, sync_total: null })
     .eq('id', connectionId)
 
   // Run the actual sync in the background — response returns immediately
