@@ -26,6 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { EditModeBar } from '@/components/dashboard/widget-system/edit-mode-bar'
+import { AddWidgetSheet } from '@/components/dashboard/widget-system/add-widget-sheet'
+import { SqlWidgetCard } from '@/components/dashboard/widget-system/sql-widget-card'
+import { useWidgetConfigs } from '@/components/dashboard/widget-system/use-widget-configs'
+import type { WidgetConfig, ChartType } from '@/components/dashboard/widget-system/types'
 
 function EmptyState({ label }: { label: string }) {
   return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">{label}</div>
@@ -44,11 +49,15 @@ interface MovementData {
 interface Props {
   workspaceId?: string
   connectionId?: string
+  editMode?: boolean
+  onEditModeChange?: (v: boolean) => void
 }
 
-export function MovementView({ workspaceId, connectionId }: Props) {
+export function MovementView({ workspaceId, connectionId, editMode = false, onEditModeChange }: Props) {
   const [data, setData] = useState<MovementData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [showAddSheet, setShowAddSheet] = useState(false)
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   // Re-render when brand colors change in Setup
   const [, setColorTick] = useState(0)
   useEffect(() => {
@@ -56,6 +65,8 @@ export function MovementView({ workspaceId, connectionId }: Props) {
     window.addEventListener(BRAND_COLORS_EVENT, h)
     return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
   }, [])
+
+  const wc = useWidgetConfigs(workspaceId, 'movement')
 
   useEffect(() => {
     if (!workspaceId) return
@@ -110,12 +121,25 @@ export function MovementView({ workspaceId, connectionId }: Props) {
       ]
     : []
 
+  const sqlWidgets = wc.configs.filter(c => c.type === 'sql')
+
   return (
     <div>
       <SectionHeader
         title="Weekly Movement"
         description="New vs existing ads, platform momentum, and performance index trends"
       />
+
+      {editMode && (
+        <EditModeBar
+          tab="movement"
+          configs={wc.configs}
+          onAddWidget={() => { setEditingWidget(null); setShowAddSheet(true) }}
+          onDone={() => onEditModeChange?.(false)}
+          onCancel={() => onEditModeChange?.(false)}
+          saving={wc.saving}
+        />
+      )}
 
       {!data && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
@@ -238,6 +262,49 @@ export function MovementView({ workspaceId, connectionId }: Props) {
           )}
         </div>
       </div>
+
+      {sqlWidgets.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-3 my-6">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Custom widgets</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {sqlWidgets.map(w => (
+              <SqlWidgetCard
+                key={w.id}
+                config={w}
+                workspaceId={workspaceId ?? ''}
+                editMode={editMode}
+                onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
+                onDelete={() => wc.deleteWidget(w.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showAddSheet && workspaceId && (
+        <AddWidgetSheet
+          workspaceId={workspaceId}
+          tab="movement"
+          editingWidget={editingWidget}
+          onSave={async (params) => {
+            if (editingWidget) {
+              await wc.updateWidget(editingWidget.id, {
+                title: params.title,
+                sqlQuery: params.sqlQuery,
+                chartType: params.chartType as ChartType,
+                colSpan: params.colSpan,
+              })
+            } else {
+              await wc.addSqlWidget(params)
+            }
+          }}
+          onClose={() => { setShowAddSheet(false); setEditingWidget(null) }}
+        />
+      )}
     </div>
   )
 }

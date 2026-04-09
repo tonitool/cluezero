@@ -18,6 +18,12 @@ import {
   CircleUser,
   FileText,
   Table2,
+  Users,
+  LayoutDashboard,
+  TrendingUp,
+  Sparkles,
+  ImageIcon,
+  ChevronDown,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -41,6 +47,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarSeparator,
   SidebarTrigger,
@@ -58,9 +67,12 @@ import { ConnectionsView }      from './views/connections-view'
 import { SetupView }            from './views/setup-view'
 import { AccountView }          from './views/account-view'
 import { AgentsHubView }        from './views/agents-hub-view'
-import { IntelligenceHubView }  from './views/intelligence-hub-view'
+import { IntelligenceHubView, type IntelTab, INTEL_TABS } from './views/intelligence-hub-view'
 import { CanvasView }           from './canvas/canvas-view'
 import { DashboardsView }       from './views/dashboards-view'
+import { ClientIntelLayout }    from './client-intel-layout'
+import { ClientsView }          from './views/clients-view'
+import { PrintReportOverlay }   from './print-report-overlay'
 
 type ViewId =
   | 'home'
@@ -70,6 +82,10 @@ type ViewId =
   | 'agents'
   | 'alerts'
   | 'connections' | 'setup' | 'account'
+  | 'clients'
+
+// Intelligence sub-nav mapped to INTEL_TABS icons/labels
+const INTEL_SUB_ITEMS = INTEL_TABS
 
 const NAV_GROUPS = [
   {
@@ -81,9 +97,8 @@ const NAV_GROUPS = [
   {
     label: 'Reporting',
     items: [
-      { id: 'intelligence' as ViewId, label: 'Intelligence', icon: BarChart3 },
-      { id: 'canvas'       as ViewId, label: 'Canvas',       icon: Workflow },
-      { id: 'dashboards'   as ViewId, label: 'Spaces',       icon: LayoutGrid },
+      { id: 'canvas'     as ViewId, label: 'Canvas', icon: Workflow },
+      { id: 'dashboards' as ViewId, label: 'Spaces', icon: LayoutGrid },
     ],
   },
   {
@@ -108,7 +123,25 @@ const NAV_GROUPS = [
   },
 ]
 
-const ALL_ITEMS = NAV_GROUPS.flatMap(g => g.items)
+const AGENCY_NAV_GROUP = {
+  label: 'Agency',
+  items: [
+    { id: 'clients' as ViewId, label: 'Clients', icon: Users },
+  ],
+}
+
+const ALL_ITEMS = [
+  { id: 'home' as ViewId, label: 'Dashboard', icon: Home },
+  { id: 'intelligence' as ViewId, label: 'Intelligence', icon: BarChart3 },
+  { id: 'canvas' as ViewId, label: 'Canvas', icon: Workflow },
+  { id: 'dashboards' as ViewId, label: 'Spaces', icon: LayoutGrid },
+  { id: 'agents' as ViewId, label: 'Agent Hub', icon: Bot },
+  { id: 'alerts' as ViewId, label: 'Alerts', icon: Bell },
+  { id: 'connections' as ViewId, label: 'Connections', icon: Plug },
+  { id: 'setup' as ViewId, label: 'Setup', icon: Settings2 },
+  { id: 'account' as ViewId, label: 'Account', icon: CircleUser },
+  { id: 'clients' as ViewId, label: 'Clients', icon: Users },
+]
 
 function generateWeeks(n = 4): { value: string; label: string }[] {
   const result = []
@@ -129,38 +162,53 @@ function generateWeeks(n = 4): { value: string; label: string }[] {
 }
 
 const weeks = generateWeeks(4)
+const WORKSPACE_VIEWS: ViewId[] = ['connections', 'setup', 'alerts', 'account', 'clients']
 
-// Views that don't need the week selector
-const WORKSPACE_VIEWS: ViewId[] = ['connections', 'setup', 'alerts', 'account']
+type WorkspaceMemberRole = 'owner' | 'admin' | 'viewer' | 'client'
+type WorkspaceType = 'standalone' | 'agency' | 'client'
 
 interface Props {
   workspaceId: string
   workspaceName: string
   workspaceSlug: string
   ownBrand?: string
+  userRole?: WorkspaceMemberRole
+  workspaceType?: WorkspaceType
 }
 
-interface SnowflakeSource {
-  id: string
-  name: string
-}
+interface SnowflakeSource { id: string; name: string }
 
-export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspaceSlug, ownBrand = '' }: Props) {
+export function CompetitiveIntelDashboard({
+  workspaceId, workspaceName, workspaceSlug, ownBrand = '', userRole, workspaceType,
+}: Props) {
+  // Client users → stripped-down layout
+  if (userRole === 'client') {
+    return (
+      <ClientIntelLayout
+        workspaceId={workspaceId}
+        workspaceName={workspaceName}
+        ownBrand={ownBrand}
+      />
+    )
+  }
+
   const [view,          setView]          = useState<ViewId>('home')
+  const [intelTab,      setIntelTab]      = useState<IntelTab>('overview')
+  const [intelOpen,     setIntelOpen]     = useState(true)   // sidebar expand state
   const [pendingView,   setPendingView]   = useState<ViewId | null>(null)
   const [transitioning, setTransitioning] = useState(false)
-  const [week, setWeek] = useState('w0')
-  const [sources, setSources] = useState<SnowflakeSource[]>([])
-  const [connectionId, setConnectionId] = useState<string>('all')
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [showExport, setShowExport] = useState(false)
+  const [week,          setWeek]          = useState('w0')
+  const [sources,       setSources]       = useState<SnowflakeSource[]>([])
+  const [connectionId,  setConnectionId]  = useState<string>('all')
+  const [refreshKey,    setRefreshKey]    = useState(0)
+  const [showExport,    setShowExport]    = useState(false)
+  const [showPrintReport, setShowPrintReport] = useState(false)
   const [syncingGlobal, setSyncingGlobal] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     if (!workspaceId) return
-    // Warm the brand-colors cache so all charts use live colors immediately
     loadBrandColors(workspaceId)
   }, [workspaceId])
 
@@ -179,11 +227,8 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
       .catch(() => {})
   }, [workspaceId])
 
-  useEffect(() => {
-    checkSyncStatus()
-  }, [checkSyncStatus])
+  useEffect(() => { checkSyncStatus() }, [checkSyncStatus])
 
-  // Poll while any connection is syncing
   useEffect(() => {
     if (!syncingGlobal) return
     const interval = setInterval(checkSyncStatus, 3000)
@@ -194,7 +239,6 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
     if (next === view && !transitioning) return
     setPendingView(next)
     setTransitioning(true)
-    // Show icon for 480 ms, then swap view and fade out
     setTimeout(() => {
       setView(next)
       setPendingView(null)
@@ -202,14 +246,15 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
     }, 480)
   }
 
-  // Map current view to its primary data API
+  function navigateToIntel(tab: IntelTab) {
+    setIntelTab(tab)
+    setIntelOpen(true)
+    navigateTo('intelligence')
+  }
+
   function getExportApiUrl() {
     const src = connectionId !== 'all' ? `&connectionId=${connectionId}` : ''
-    const base = `workspaceId=${workspaceId}${src}`
-    if (view === 'intelligence') return `/api/data/overview?${base}`
-    if (view === 'canvas')       return `/api/data/overview?${base}`
-    if (view === 'dashboards')   return `/api/data/overview?${base}`
-    return `/api/data/overview?${base}`
+    return `/api/data/overview?workspaceId=${workspaceId}${src}`
   }
 
   async function handleExportCSV() {
@@ -217,7 +262,6 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
     try {
       const res  = await fetch(getExportApiUrl())
       const data = await res.json()
-      // Use the weekly movement table if available, otherwise fall back to brands list
       const rows: Record<string, unknown>[] = data.table ?? data.brands?.map((b: string) => ({ brand: b })) ?? []
       if (rows.length === 0) return
       const headers = Object.keys(rows[0])
@@ -228,8 +272,8 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
       const blob = new Blob([csv], { type: 'text/csv' })
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
-      a.href     = url
-      a.download = `cluezero-export-${view}-${new Date().toISOString().slice(0, 10)}.csv`
+      a.href = url
+      a.download = `cluezero-export-${view}-${new Date().toISOString().slice(0,10)}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch { /* ignore */ }
@@ -237,7 +281,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
 
   function handleExportPDF() {
     setShowExport(false)
-    window.print()
+    setShowPrintReport(true)
   }
 
   async function handleSignOut() {
@@ -246,8 +290,13 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
     router.refresh()
   }
 
-  const activeItem = ALL_ITEMS.find(n => n.id === view)!
+  const activeItem = ALL_ITEMS.find(n => n.id === view) ?? ALL_ITEMS[0]
   const showWeekSelector = !WORKSPACE_VIEWS.includes(view)
+
+  // Breadcrumb label for intelligence sub-tabs
+  const intelSubLabel = view === 'intelligence'
+    ? INTEL_SUB_ITEMS.find(t => t.id === intelTab)?.label ?? 'Intelligence'
+    : null
 
   return (
     <SidebarProvider>
@@ -265,13 +314,107 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
         <SidebarSeparator />
 
         <SidebarContent>
-          {NAV_GROUPS.map((group, gi) => (
+          {/* Home group */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="sr-only">Home</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={view === 'home'}
+                    onClick={() => navigateTo('home')}
+                    tooltip="Dashboard"
+                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
+                  >
+                    <Home className="size-4" />
+                    <span>Dashboard</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {/* Reporting group — Intelligence is expandable */}
+          <SidebarGroup>
+            <SidebarSeparator className="mb-1" />
+            <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">
+              Reporting
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+
+                {/* Intelligence — expandable */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={view === 'intelligence'}
+                    onClick={() => {
+                      setIntelOpen(v => !v)
+                      if (view !== 'intelligence') navigateTo('intelligence')
+                    }}
+                    tooltip="Intelligence"
+                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
+                  >
+                    <BarChart3 className="size-4" />
+                    <span>Intelligence</span>
+                    <ChevronDown
+                      className={cn(
+                        'ml-auto size-3.5 transition-transform duration-200 group-data-[collapsible=icon]:hidden',
+                        intelOpen && 'rotate-180'
+                      )}
+                    />
+                  </SidebarMenuButton>
+
+                  {/* Sub-items */}
+                  {intelOpen && (
+                    <SidebarMenuSub className="group-data-[collapsible=icon]:hidden">
+                      {INTEL_SUB_ITEMS.map(sub => (
+                        <SidebarMenuSubItem key={sub.id}>
+                          <SidebarMenuSubButton
+                            isActive={view === 'intelligence' && intelTab === sub.id}
+                            onClick={() => navigateToIntel(sub.id)}
+                            className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
+                          >
+                            <sub.icon className="size-3.5" />
+                            <span>{sub.id === 'brand' && ownBrand ? ownBrand : sub.label}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  )}
+                </SidebarMenuItem>
+
+                {/* Canvas + Spaces */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={view === 'canvas'}
+                    onClick={() => navigateTo('canvas')}
+                    tooltip="Canvas"
+                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
+                  >
+                    <Workflow className="size-4" />
+                    <span>Canvas</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={view === 'dashboards'}
+                    onClick={() => navigateTo('dashboards')}
+                    tooltip="Spaces"
+                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
+                  >
+                    <LayoutGrid className="size-4" />
+                    <span>Spaces</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {/* Remaining groups */}
+          {NAV_GROUPS.slice(2).map((group) => (
             <SidebarGroup key={group.label}>
-              {gi > 1 && <SidebarSeparator className="mb-1" />}
-              <SidebarGroupLabel className={cn(
-                'text-sidebar-foreground/40 text-[10px] uppercase tracking-widest',
-                gi === 0 && 'sr-only'
-              )}>
+              <SidebarSeparator className="mb-1" />
+              <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">
                 {group.label}
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -293,6 +436,33 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
               </SidebarGroupContent>
             </SidebarGroup>
           ))}
+
+          {/* Agency group */}
+          {(userRole === 'owner' || userRole === 'admin' || !userRole) && (
+            <SidebarGroup>
+              <SidebarSeparator className="mb-1" />
+              <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">
+                {AGENCY_NAV_GROUP.label}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {AGENCY_NAV_GROUP.items.map(item => (
+                    <SidebarMenuItem key={item.id}>
+                      <SidebarMenuButton
+                        isActive={view === item.id || pendingView === item.id}
+                        onClick={() => navigateTo(item.id)}
+                        tooltip={item.label}
+                        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-foreground"
+                      >
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </SidebarContent>
 
         <SidebarFooter className="p-3 group-data-[collapsible=icon]:p-2">
@@ -329,9 +499,21 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
           <SidebarTrigger className="size-8" />
           <Separator orientation="vertical" className="h-4" />
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <span>{NAV_GROUPS.find(g => g.items.some(i => i.id === view))?.label}</span>
-            <ChevronRight className="size-3.5" />
-            <span className="font-medium text-foreground">{activeItem.label}</span>
+            {view === 'intelligence' ? (
+              <>
+                <span>Reporting</span>
+                <ChevronRight className="size-3.5" />
+                <span>Intelligence</span>
+                <ChevronRight className="size-3.5" />
+                <span className="font-medium text-foreground">{intelSubLabel}</span>
+              </>
+            ) : (
+              <>
+                <span>{NAV_GROUPS.find(g => g.items.some(i => i.id === view))?.label ?? 'Agency'}</span>
+                <ChevronRight className="size-3.5" />
+                <span className="font-medium text-foreground">{activeItem.label}</span>
+              </>
+            )}
           </div>
           <div className="ml-auto flex items-center gap-2">
             {showWeekSelector && sources.length > 0 && (
@@ -354,9 +536,7 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
                 </SelectTrigger>
                 <SelectContent>
                   {weeks.map(w => (
-                    <SelectItem key={w.value} value={w.value} className="text-xs">
-                      {w.label}
-                    </SelectItem>
+                    <SelectItem key={w.value} value={w.value} className="text-xs">{w.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -401,9 +581,18 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
 
         <main className="p-6 relative">
           <PageLoader visible={transitioning} />
-          <div key={`${view}-${refreshKey}`}>
+          <div key={`${view}-${view === 'intelligence' ? intelTab : ''}-${refreshKey}`}>
             {view === 'home'         && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={() => navigateTo('intelligence')} connectionId={connectionId === 'all' ? undefined : connectionId} />}
-            {view === 'intelligence' && <IntelligenceHubView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+            {view === 'intelligence' && (
+              <IntelligenceHubView
+                workspaceId={workspaceId}
+                ownBrand={ownBrand}
+                connectionId={connectionId === 'all' ? undefined : connectionId}
+                activeTab={intelTab}
+                hideTabs={true}
+                canEdit={true}
+              />
+            )}
             {view === 'canvas'       && <CanvasView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}
             {view === 'dashboards'   && <DashboardsView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} onNavigate={(v) => navigateTo(v as ViewId)} />}
             {view === 'agents'       && <AgentsHubView workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId === 'all' ? undefined : connectionId} />}
@@ -411,9 +600,20 @@ export function CompetitiveIntelDashboard({ workspaceId, workspaceName, workspac
             {view === 'connections'  && <ConnectionsView workspaceId={workspaceId} />}
             {view === 'setup'        && <SetupView workspaceId={workspaceId} workspaceName={workspaceName} workspaceSlug={workspaceSlug} ownBrand={ownBrand} />}
             {view === 'account'      && <AccountView workspaceId={workspaceId} />}
+            {view === 'clients'      && <ClientsView workspaceId={workspaceId} />}
           </div>
         </main>
       </SidebarInset>
+
+      {showPrintReport && (
+        <PrintReportOverlay
+          workspaceId={workspaceId}
+          workspaceName={workspaceName}
+          ownBrand={ownBrand}
+          connectionId={connectionId !== 'all' ? connectionId : undefined}
+          onClose={() => setShowPrintReport(false)}
+        />
+      )}
     </SidebarProvider>
   )
 }

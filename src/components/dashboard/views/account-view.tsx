@@ -54,7 +54,7 @@ function SectionCard({ icon: Icon, title, description, children }: {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function AccountView({ workspaceId }: { workspaceId?: string }) {
+export function AccountView({ workspaceId, hideReset }: { workspaceId?: string; hideReset?: boolean }) {
   const supabase = createClient()
 
   // ── User state ──────────────────────────────────────────────────────────────
@@ -338,39 +338,41 @@ export function AccountView({ workspaceId }: { workspaceId?: string }) {
           </div>
         </SectionCard>
 
-        {/* ── Hard reset ── */}
-        <SectionCard icon={RefreshCcw} title="Hard reset data" description="Wipe all synced ad data, spend estimates, and brand records from this workspace. Your Snowflake connections are kept. Numbers will return to zero until you sync again.">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reset-confirm" className="text-xs">
-              Type <span className="font-mono font-bold">RESET</span> to confirm
-            </Label>
-            <Input
-              id="reset-confirm"
-              value={resetConfirm}
-              onChange={e => setResetConfirm(e.target.value)}
-              placeholder="RESET"
-              className="h-8 text-sm max-w-sm font-mono"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              All widgets will show empty until you go to Connections and press Sync Now.
-            </p>
-          </div>
-          <Feedback state={resetFeedback} />
-          <div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 text-xs border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300"
-              disabled={resetting || !canReset || !workspaceId}
-              onClick={handleHardReset}
-            >
-              {resetting
-                ? <><Loader2 className="size-3 mr-1.5 animate-spin" /> Resetting…</>
-                : <><RefreshCcw className="size-3 mr-1.5" /> Hard reset all data</>
-              }
-            </Button>
-          </div>
-        </SectionCard>
+        {/* ── Hard reset — hidden for client users ── */}
+        <div className={hideReset ? 'hidden' : undefined}>
+          <SectionCard icon={RefreshCcw} title="Hard reset data" description="Wipe all synced ad data, spend estimates, and brand records from this workspace. Your Snowflake connections are kept. Numbers will return to zero until you sync again.">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reset-confirm" className="text-xs">
+                Type <span className="font-mono font-bold">RESET</span> to confirm
+              </Label>
+              <Input
+                id="reset-confirm"
+                value={resetConfirm}
+                onChange={e => setResetConfirm(e.target.value)}
+                placeholder="RESET"
+                className="h-8 text-sm max-w-sm font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                All widgets will show empty until you go to Connections and press Sync Now.
+              </p>
+            </div>
+            <Feedback state={resetFeedback} />
+            <div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300"
+                disabled={resetting || !canReset || !workspaceId}
+                onClick={handleHardReset}
+              >
+                {resetting
+                  ? <><Loader2 className="size-3 mr-1.5 animate-spin" /> Resetting…</>
+                  : <><RefreshCcw className="size-3 mr-1.5" /> Hard reset all data</>
+                }
+              </Button>
+            </div>
+          </SectionCard>
+        </div>
 
         {/* ── Danger zone ── */}
         <SectionCard icon={Trash2} title="Delete account" description="Permanently delete your account and all associated data. This cannot be undone.">

@@ -10,6 +10,11 @@ import { SectionHeader } from '@/components/dashboard/_components/section-header
 import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { TICK, GRID } from '@/components/dashboard/_components/chart-theme'
 import { Badge } from '@/components/ui/badge'
+import { EditModeBar } from '@/components/dashboard/widget-system/edit-mode-bar'
+import { AddWidgetSheet } from '@/components/dashboard/widget-system/add-widget-sheet'
+import { SqlWidgetCard } from '@/components/dashboard/widget-system/sql-widget-card'
+import { useWidgetConfigs } from '@/components/dashboard/widget-system/use-widget-configs'
+import type { WidgetConfig, ChartType } from '@/components/dashboard/widget-system/types'
 
 const STRATEGY_COLORS = {
   awareness: '#6366F1',
@@ -53,21 +58,31 @@ function ScatterDot({ cx = 0, cy = 0, payload }: ScatterDotProps) {
   return <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
 }
 
-interface Props { workspaceId?: string; ownBrand?: string; connectionId?: string }
+interface Props {
+  workspaceId?: string
+  ownBrand?: string
+  connectionId?: string
+  editMode?: boolean
+  onEditModeChange?: (v: boolean) => void
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OrlenData = Record<string, any>
 
-export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Props) {
+export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId, editMode = false, onEditModeChange }: Props) {
   const brandLabel = ownBrand || 'ORLEN'
   const [data, setData] = useState<OrlenData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [showAddSheet, setShowAddSheet] = useState(false)
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   const [, setColorTick] = useState(0)
   useEffect(() => {
     const h = () => setColorTick(t => t + 1)
     window.addEventListener(BRAND_COLORS_EVENT, h)
     return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
   }, [])
+
+  const wc = useWidgetConfigs(workspaceId, 'brand')
 
   useEffect(() => {
     if (!workspaceId) return
@@ -95,12 +110,25 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
   const orlenVsMarketScorecards  = data?.orlenVsMarketScorecards  ?? []
   const marketActivityVsPresence = data?.marketActivityVsPresence ?? []
 
+  const sqlWidgets = wc.configs.filter(c => c.type === 'sql')
+
   return (
     <div>
       <SectionHeader
         title={`${brandLabel} vs Market`}
         description="Scorecard comparison, competitor strategy profiles, and whitespace opportunities"
       />
+
+      {editMode && (
+        <EditModeBar
+          tab="brand"
+          configs={wc.configs}
+          onAddWidget={() => { setEditingWidget(null); setShowAddSheet(true) }}
+          onDone={() => onEditModeChange?.(false)}
+          onCancel={() => onEditModeChange?.(false)}
+          saving={wc.saving}
+        />
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {orlenVsMarketScorecards.map((item: { label: string; orlen: number | string; market: number | string }) => (
@@ -194,6 +222,49 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId }: Pro
         <p className="font-semibold text-sm mb-2">Top Opportunities</p>
         <p className="text-xs text-muted-foreground">Opportunity analysis is not available in the current data source.</p>
       </div>
+
+      {sqlWidgets.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-3 my-6">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Custom widgets</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {sqlWidgets.map(w => (
+              <SqlWidgetCard
+                key={w.id}
+                config={w}
+                workspaceId={workspaceId ?? ''}
+                editMode={editMode}
+                onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
+                onDelete={() => wc.deleteWidget(w.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showAddSheet && workspaceId && (
+        <AddWidgetSheet
+          workspaceId={workspaceId}
+          tab="brand"
+          editingWidget={editingWidget}
+          onSave={async (params) => {
+            if (editingWidget) {
+              await wc.updateWidget(editingWidget.id, {
+                title: params.title,
+                sqlQuery: params.sqlQuery,
+                chartType: params.chartType as ChartType,
+                colSpan: params.colSpan,
+              })
+            } else {
+              await wc.addSqlWidget(params)
+            }
+          }}
+          onClose={() => { setShowAddSheet(false); setEditingWidget(null) }}
+        />
+      )}
     </div>
   )
 }

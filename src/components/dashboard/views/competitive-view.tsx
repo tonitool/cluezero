@@ -10,6 +10,11 @@ import { SectionHeader } from '@/components/dashboard/_components/section-header
 import { PLATFORM_COLORS } from '@/components/dashboard/_components/constants'
 import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
+import { EditModeBar } from '@/components/dashboard/widget-system/edit-mode-bar'
+import { AddWidgetSheet } from '@/components/dashboard/widget-system/add-widget-sheet'
+import { SqlWidgetCard } from '@/components/dashboard/widget-system/sql-widget-card'
+import { useWidgetConfigs } from '@/components/dashboard/widget-system/use-widget-configs'
+import type { WidgetConfig, ChartType } from '@/components/dashboard/widget-system/types'
 
 // Palette for topic-based charts (not brand-specific)
 const TOPIC_PALETTE = ['#6366F1', '#0EA5E9', '#10B981', '#F59E0B', '#E4002B', '#8B5CF6', '#EC4899', '#14B8A6']
@@ -28,14 +33,21 @@ function EmptyState({ label }: { label: string }) {
   return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">{label}</div>
 }
 
-interface Props { workspaceId?: string; connectionId?: string }
+interface Props {
+  workspaceId?: string
+  connectionId?: string
+  editMode?: boolean
+  onEditModeChange?: (v: boolean) => void
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CompetitiveData = Record<string, any>
 
-export function CompetitiveView({ workspaceId, connectionId }: Props) {
+export function CompetitiveView({ workspaceId, connectionId, editMode = false, onEditModeChange }: Props) {
   const [data, setData] = useState<CompetitiveData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [showAddSheet, setShowAddSheet] = useState(false)
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   // Re-render when brand colors change in Setup
   const [, setColorTick] = useState(0)
   useEffect(() => {
@@ -43,6 +55,8 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
     window.addEventListener(BRAND_COLORS_EVENT, h)
     return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
   }, [])
+
+  const wc = useWidgetConfigs(workspaceId, 'competitive')
 
   useEffect(() => {
     if (!workspaceId) return
@@ -75,12 +89,25 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
   const topicColorMap: Record<string, string> = {}
   topTopicKeys.forEach((k, i) => { topicColorMap[k] = TOPIC_PALETTE[i % TOPIC_PALETTE.length] })
 
+  const sqlWidgets = wc.configs.filter(c => c.type === 'sql')
+
   return (
     <div>
       <SectionHeader
         title="Competitive Intelligence"
         description="Advertiser benchmarks, topic investment, and audience targeting analysis"
       />
+
+      {editMode && (
+        <EditModeBar
+          tab="competitive"
+          configs={wc.configs}
+          onAddWidget={() => { setEditingWidget(null); setShowAddSheet(true) }}
+          onDone={() => onEditModeChange?.(false)}
+          onCancel={() => onEditModeChange?.(false)}
+          saving={wc.saving}
+        />
+      )}
 
       {!data && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
@@ -229,6 +256,49 @@ export function CompetitiveView({ workspaceId, connectionId }: Props) {
       <div className="px-4 py-3 bg-zinc-50 border border-border rounded-lg text-xs text-muted-foreground">
         Audience age, gender, and location data is not available in the current data source.
       </div>
+
+      {sqlWidgets.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-3 my-6">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Custom widgets</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {sqlWidgets.map(w => (
+              <SqlWidgetCard
+                key={w.id}
+                config={w}
+                workspaceId={workspaceId ?? ''}
+                editMode={editMode}
+                onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
+                onDelete={() => wc.deleteWidget(w.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showAddSheet && workspaceId && (
+        <AddWidgetSheet
+          workspaceId={workspaceId}
+          tab="competitive"
+          editingWidget={editingWidget}
+          onSave={async (params) => {
+            if (editingWidget) {
+              await wc.updateWidget(editingWidget.id, {
+                title: params.title,
+                sqlQuery: params.sqlQuery,
+                chartType: params.chartType as ChartType,
+                colSpan: params.colSpan,
+              })
+            } else {
+              await wc.addSqlWidget(params)
+            }
+          }}
+          onClose={() => { setShowAddSheet(false); setEditingWidget(null) }}
+        />
+      )}
     </div>
   )
 }

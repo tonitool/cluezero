@@ -45,6 +45,8 @@ interface SnowflakeConn {
   recordCount: number | null
   syncStatus: SyncStatus
   syncError: string | null
+  syncProgress: number | null
+  syncTotal: number | null
 }
 
 interface Props { workspaceId?: string }
@@ -460,6 +462,21 @@ export function ConnectionsView({ workspaceId }: Props) {
 
                   {hasError && conn.syncError && (
                     <p className="text-[11px] text-rose-600 bg-rose-50 border border-rose-100 rounded px-2 py-1.5">{conn.syncError}</p>
+                  )}
+
+                  {isSyncing && conn.syncTotal != null && conn.syncProgress != null && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-muted-foreground">
+                        <span>Importing rows…</span>
+                        <span>{conn.syncProgress.toLocaleString()} / {conn.syncTotal.toLocaleString()}</span>
+                      </div>
+                      <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#29B5E8] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.round((conn.syncProgress / conn.syncTotal) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
                   )}
 
                   <div className="grid grid-cols-2 gap-3">

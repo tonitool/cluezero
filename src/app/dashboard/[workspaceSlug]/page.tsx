@@ -20,30 +20,29 @@ export default async function WorkspaceDashboardPage({
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Fetch workspace by slug
-  // Fetch workspace — try with own_brand first, fall back if column doesn't exist yet
-  let workspace: { id: string; name: string; slug: string; own_brand?: string | null } | null = null
+  // Fetch workspace — include workspace_type for client/agency branching
+  let workspace: { id: string; name: string; slug: string; own_brand?: string | null; workspace_type?: string | null } | null = null
   const { data: wsWithBrand, error: wsError } = await admin
     .from('workspaces')
-    .select('id, name, slug, own_brand')
+    .select('id, name, slug, own_brand, workspace_type')
     .eq('slug', workspaceSlug)
     .single()
 
   if (!wsError) {
     workspace = wsWithBrand
   } else {
-    // Column may not exist yet — fall back to base fields
+    // Columns may not exist yet — fall back to base fields
     const { data: wsBase } = await admin
       .from('workspaces')
       .select('id, name, slug')
       .eq('slug', workspaceSlug)
       .single()
-    workspace = wsBase ? { ...wsBase, own_brand: null } : null
+    workspace = wsBase ? { ...wsBase, own_brand: null, workspace_type: null } : null
   }
 
   if (!workspace) notFound()
 
-  // Verify the user is a member
+  // Verify the user is a member and capture their role
   const { data: membership } = await admin
     .from('workspace_members')
     .select('role')
@@ -59,6 +58,8 @@ export default async function WorkspaceDashboardPage({
       workspaceName={workspace.name}
       workspaceSlug={workspace.slug}
       ownBrand={workspace.own_brand ?? ''}
+      userRole={membership.role as 'owner' | 'admin' | 'viewer' | 'client'}
+      workspaceType={(workspace.workspace_type ?? 'standalone') as 'standalone' | 'agency' | 'client'}
     />
   )
 }

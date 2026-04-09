@@ -6,6 +6,11 @@ import { SectionHeader } from '@/components/dashboard/_components/section-header
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+import { EditModeBar } from '@/components/dashboard/widget-system/edit-mode-bar'
+import { AddWidgetSheet } from '@/components/dashboard/widget-system/add-widget-sheet'
+import { SqlWidgetCard } from '@/components/dashboard/widget-system/sql-widget-card'
+import { useWidgetConfigs } from '@/components/dashboard/widget-system/use-widget-configs'
+import type { WidgetConfig, ChartType } from '@/components/dashboard/widget-system/types'
 
 const PLATFORM_COLORS: Record<string, string> = {
   Meta:     '#1877F2',
@@ -54,17 +59,23 @@ interface Props {
   workspaceId?: string
   connectionId?: string
   onNavigate?: (view: string) => void
+  editMode?: boolean
+  onEditModeChange?: (v: boolean) => void
 }
 
-export function CreativeLibraryView({ workspaceId, connectionId, onNavigate }: Props) {
+export function CreativeLibraryView({ workspaceId, connectionId, onNavigate, editMode = false, onEditModeChange }: Props) {
   const [creatives, setCreatives] = useState<Creative[]>([])
   const [loading, setLoading] = useState(!!workspaceId)
+  const [showAddSheet, setShowAddSheet] = useState(false)
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
 
   const [search, setSearch] = useState('')
   const [brandFilter, setBrandFilter] = useState<FilterOption>('All')
   const [platformFilter, setPlatformFilter] = useState<FilterOption>('All')
   const [funnelFilter, setFunnelFilter] = useState<FilterOption>('All')
   const [sortBy, setSortBy] = useState<'pi' | 'sentiment' | 'newest'>('pi')
+
+  const wc = useWidgetConfigs(workspaceId, 'creative')
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return }
@@ -170,12 +181,25 @@ export function CreativeLibraryView({ workspaceId, connectionId, onNavigate }: P
     </div>
   )
 
+  const sqlWidgets = wc.configs.filter(c => c.type === 'sql')
+
   return (
     <div>
       <SectionHeader
         title="Creative Library"
         description={`${filtered.length} creative${filtered.length !== 1 ? 's' : ''} from tracked competitors`}
       />
+
+      {editMode && (
+        <EditModeBar
+          tab="creative"
+          configs={wc.configs}
+          onAddWidget={() => { setEditingWidget(null); setShowAddSheet(true) }}
+          onDone={() => onEditModeChange?.(false)}
+          onCancel={() => onEditModeChange?.(false)}
+          saving={wc.saving}
+        />
+      )}
 
       {/* Filter bar */}
       <div className="bg-white rounded-xl border border-border shadow-sm p-4 mb-5 space-y-3">
@@ -288,6 +312,49 @@ export function CreativeLibraryView({ workspaceId, connectionId, onNavigate }: P
             )
           })}
         </div>
+      )}
+
+      {sqlWidgets.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-3 my-6">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground px-2">Custom widgets</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {sqlWidgets.map(w => (
+              <SqlWidgetCard
+                key={w.id}
+                config={w}
+                workspaceId={workspaceId ?? ''}
+                editMode={editMode}
+                onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
+                onDelete={() => wc.deleteWidget(w.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showAddSheet && workspaceId && (
+        <AddWidgetSheet
+          workspaceId={workspaceId}
+          tab="creative"
+          editingWidget={editingWidget}
+          onSave={async (params) => {
+            if (editingWidget) {
+              await wc.updateWidget(editingWidget.id, {
+                title: params.title,
+                sqlQuery: params.sqlQuery,
+                chartType: params.chartType as ChartType,
+                colSpan: params.colSpan,
+              })
+            } else {
+              await wc.addSqlWidget(params)
+            }
+          }}
+          onClose={() => { setShowAddSheet(false); setEditingWidget(null) }}
+        />
       )}
     </div>
   )

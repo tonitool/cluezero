@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data } = await admin
     .from('snowflake_connections')
-    .select('id, connection_name, table_name, last_synced_at, last_sync_rows, sync_status, sync_error')
+    .select('id, connection_name, table_name, last_synced_at, last_sync_rows, sync_status, sync_error, sync_progress, sync_total')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: true })
 
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
       recordCount:    c.last_sync_rows,
       syncStatus:     c.sync_status ?? 'idle',
       syncError:      c.sync_error,
+      syncProgress:   c.sync_progress ?? null,
+      syncTotal:      c.sync_total ?? null,
     })),
   })
 }

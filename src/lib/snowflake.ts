@@ -24,6 +24,15 @@ export type SnowflakeMapping = {
   colPi?: string
   colFunnel?: string
   colTopic?: string
+  colThumbnail?: string
+  /** Snowflake global_ad_id — used as the canonical unique ad key */
+  colAdId?: string
+  /** source_platform column (META | GOOGLE | LINKEDIN) */
+  colPlatform?: string
+  /** is_active boolean column */
+  colIsActive?: string
+  /** format_type_normalized column */
+  colFormat?: string
 }
 
 function makeConnection(creds: SnowflakeCreds) {
@@ -171,6 +180,21 @@ export function mapRow(
     return row[col] ?? row[col.toUpperCase()] ?? row[col.toLowerCase()]
   }
 
+  // Normalise platform value to lowercase (META→meta, LINKEDIN→linkedin, etc.)
+  const rawPlatform = val(mapping.colPlatform)
+  const platform = rawPlatform != null ? String(rawPlatform).toLowerCase() : null
+
+  // is_active: accept boolean true/false OR string 'true'/'1'/'yes'
+  const rawActive = val(mapping.colIsActive)
+  let isActive: boolean | null = null
+  if (rawActive != null) {
+    if (typeof rawActive === 'boolean') isActive = rawActive
+    else {
+      const s = String(rawActive).toLowerCase()
+      isActive = s === 'true' || s === '1' || s === 'yes'
+    }
+  }
+
   return {
     brand:            String(val(mapping.colBrand) ?? ''),
     date:             toISODate(val(mapping.colDate) ?? ''),
@@ -181,6 +205,11 @@ export function mapRow(
     performanceIndex: val(mapping.colPi) != null ? Number(val(mapping.colPi)) : null,
     funnelStage:      val(mapping.colFunnel) != null ? String(val(mapping.colFunnel)) : null,
     topic:            val(mapping.colTopic) != null ? String(val(mapping.colTopic)) : null,
+    thumbnailUrl:     val(mapping.colThumbnail) != null ? String(val(mapping.colThumbnail)) : null,
+    globalAdId:       val(mapping.colAdId) != null ? String(val(mapping.colAdId)) : null,
+    platform,
+    isActive,
+    format:           val(mapping.colFormat) != null ? String(val(mapping.colFormat)).toLowerCase() : null,
   }
 }
 

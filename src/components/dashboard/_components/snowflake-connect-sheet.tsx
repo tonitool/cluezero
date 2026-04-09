@@ -79,6 +79,8 @@ type Credentials = {
 type Mapping = {
   brandCol: string
   dateCol: string
+  adIdCol: string
+  platformCol: string
   headlineCol: string
   spendCol: string
   impressionsCol: string
@@ -86,6 +88,8 @@ type Mapping = {
   piCol: string
   funnelCol: string
   topicCol: string
+  formatCol: string
+  isActiveCol: string
 }
 
 const STEPS: { id: Step; label: string; icon: React.ElementType }[] = [
@@ -104,15 +108,19 @@ function autoFillMapping(columns: string[], currentMapping: Mapping): Mapping {
     return ''
   }
   return {
-    brandCol:       find(['brand', 'advertiser', 'company'])       || currentMapping.brandCol,
-    dateCol:        find(['date', 'week', 'day', 'month'])         || currentMapping.dateCol,
-    headlineCol:    find(['headline', 'creative', 'ad_name', 'title']) || currentMapping.headlineCol,
-    spendCol:       find(['spend', 'cost', 'budget'])              || currentMapping.spendCol,
-    impressionsCol: find(['impression', 'impr'])                   || currentMapping.impressionsCol,
-    reachCol:       find(['reach', 'unique'])                      || currentMapping.reachCol,
-    piCol:          find(['_pi', 'pi_', 'performance_index', 'perf_index', 'pi']) || currentMapping.piCol,
-    funnelCol:      find(['funnel', 'stage', 'objective'])         || currentMapping.funnelCol,
-    topicCol:       find(['topic', 'category', 'theme'])           || currentMapping.topicCol,
+    brandCol:       find(['advertiser_name', 'brand', 'advertiser', 'company'])           || currentMapping.brandCol,
+    dateCol:        find(['sync_week', 'date', 'week', 'day', 'month'])                   || currentMapping.dateCol,
+    adIdCol:        find(['global_ad_id', 'ad_id', 'adid'])                               || currentMapping.adIdCol,
+    platformCol:    find(['source_platform', 'platform'])                                 || currentMapping.platformCol,
+    headlineCol:    find(['ad_title', 'headline', 'creative', 'ad_name', 'title'])        || currentMapping.headlineCol,
+    spendCol:       find(['spend_est_final_eur', 'spend', 'cost', 'budget'])              || currentMapping.spendCol,
+    impressionsCol: find(['avg_impressions', 'impression', 'impr'])                       || currentMapping.impressionsCol,
+    reachCol:       find(['reach_est', 'reach', 'unique'])                                || currentMapping.reachCol,
+    piCol:          find(['performance_index_final', 'performance_index', '_pi', 'pi_', 'perf_index', 'pi']) || currentMapping.piCol,
+    funnelCol:      find(['funnel_stage_classified', 'funnel', 'stage', 'objective'])     || currentMapping.funnelCol,
+    topicCol:       find(['topic_canon', 'content_topic', 'topic', 'category', 'theme'])  || currentMapping.topicCol,
+    formatCol:      find(['format_type_normalized', 'format_type', 'ad_format', 'format']) || currentMapping.formatCol,
+    isActiveCol:    find(['is_active', 'active'])                                         || currentMapping.isActiveCol,
   }
 }
 
@@ -135,9 +143,9 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     warehouse: '', database: '', schema: '', table: '',
   })
   const [mapping, setMapping] = useState<Mapping>({
-    brandCol: '', dateCol: '', headlineCol: '',
-    spendCol: '', impressionsCol: '', reachCol: '',
-    piCol: '', funnelCol: '', topicCol: '',
+    brandCol: '', dateCol: '', adIdCol: '', platformCol: '',
+    headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '',
+    piCol: '', funnelCol: '', topicCol: '', formatCol: '', isActiveCol: '',
   })
   const [detecting, setDetecting] = useState(false)
   const [detectError, setDetectError] = useState<string | null>(null)
@@ -148,7 +156,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     setStep('credentials')
     setAuthMode('password')
     setCreds({ connectionName: '', account: '', username: '', password: '', privateKey: '', privateKeyPass: '', role: '', warehouse: '', database: '', schema: '', table: '' })
-    setMapping({ brandCol: '', dateCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '' })
+    setMapping({ brandCol: '', dateCol: '', adIdCol: '', platformCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '', formatCol: '', isActiveCol: '' })
     setDetecting(false)
     setDetectError(null)
     setSaving(false)
@@ -248,6 +256,8 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
               table:          creds.table,
               colBrand:       mapping.brandCol,
               colDate:        mapping.dateCol,
+              colAdId:        mapping.adIdCol        || undefined,
+              colPlatform:    mapping.platformCol    || undefined,
               colHeadline:    mapping.headlineCol    || undefined,
               colSpend:       mapping.spendCol       || undefined,
               colImpressions: mapping.impressionsCol || undefined,
@@ -255,6 +265,8 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
               colPi:          mapping.piCol          || undefined,
               colFunnel:      mapping.funnelCol      || undefined,
               colTopic:       mapping.topicCol       || undefined,
+              colFormat:      mapping.formatCol      || undefined,
+              colIsActive:    mapping.isActiveCol    || undefined,
             },
           }),
         })
@@ -526,15 +538,19 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
                 <p className="text-[11px] text-muted-foreground -mt-2">Leave blank to skip optional fields.</p>
 
                 {([
-                  { id: 'brandCol',       label: 'Brand / advertiser',     placeholder: 'BRAND',       required: true  },
-                  { id: 'dateCol',        label: 'Date / week start',       placeholder: 'DATE',        required: true  },
-                  { id: 'headlineCol',    label: 'Ad headline / creative',  placeholder: 'HEADLINE',    required: false },
-                  { id: 'spendCol',       label: 'Estimated spend (€)',     placeholder: 'SPEND',       required: false },
-                  { id: 'impressionsCol', label: 'Impressions',             placeholder: 'IMPRESSIONS', required: false },
-                  { id: 'reachCol',       label: 'Reach',                   placeholder: 'REACH',       required: false },
-                  { id: 'piCol',          label: 'Performance index (PI)',   placeholder: 'PI',          required: false },
-                  { id: 'funnelCol',      label: 'Funnel stage',            placeholder: 'FUNNEL',      required: false },
-                  { id: 'topicCol',       label: 'Topic / category',        placeholder: 'TOPIC',       required: false },
+                  { id: 'brandCol',       label: 'Brand / advertiser',        placeholder: 'ADVERTISER_NAME',           required: true  },
+                  { id: 'dateCol',        label: 'Date / week start',          placeholder: 'SYNC_WEEK',                 required: true  },
+                  { id: 'adIdCol',        label: 'Ad unique ID',               placeholder: 'GLOBAL_AD_ID',              required: false },
+                  { id: 'platformCol',    label: 'Platform (META/GOOGLE/…)',   placeholder: 'SOURCE_PLATFORM',           required: false },
+                  { id: 'headlineCol',    label: 'Ad headline / title',        placeholder: 'AD_TITLE',                  required: false },
+                  { id: 'spendCol',       label: 'Estimated spend (€)',        placeholder: 'SPEND_EST_FINAL_EUR',       required: false },
+                  { id: 'impressionsCol', label: 'Impressions / avg reach',    placeholder: 'AVG_IMPRESSIONS',           required: false },
+                  { id: 'reachCol',       label: 'Reach estimate',             placeholder: 'REACH_EST',                 required: false },
+                  { id: 'piCol',          label: 'Performance index (0–100)',  placeholder: 'PERFORMANCE_INDEX_FINAL',   required: false },
+                  { id: 'funnelCol',      label: 'Funnel stage',               placeholder: 'FUNNEL_STAGE_CLASSIFIED',   required: false },
+                  { id: 'topicCol',       label: 'Topic / category',           placeholder: 'TOPIC_CANON',               required: false },
+                  { id: 'formatCol',      label: 'Ad format type',             placeholder: 'FORMAT_TYPE_NORMALIZED',    required: false },
+                  { id: 'isActiveCol',    label: 'Is active flag',             placeholder: 'IS_ACTIVE',                 required: false },
                 ] as { id: keyof Mapping; label: string; placeholder: string; required: boolean }[]).map(field => (
                   <div key={field.id} className="flex flex-col gap-1.5">
                     <Label htmlFor={`sf-${field.id}`} className="text-xs">
