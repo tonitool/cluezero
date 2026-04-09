@@ -1,29 +1,88 @@
+/**
+ * sync-connection.ts — Snowflake → Supabase sync engine (clean rebuild)
+ *
+ * Data model:
+ *   Snowflake view V_AD_LIBRARY_FINAL_WEEKLY is a MONTHLY snapshot.
+ *   Each row = one ad × one month (same ad appears ~4 times for 4 months).
+ *
+ * Strategy:
+ *   1. Fetch all rows from Snowflake via the SDK
+ *   2. Map each raw row to our normalized schema
+ *   3. Batch-insert brands (new ones only, plain INSERT, skip conflicts)
+ *   4. Batch-insert ads   (new ones only, SELECT existing → INSERT new)
+ *   5. Batch-insert spend (ALL rows — every ad×month gets a spend record)
+ *   6. Batch-insert enrichments (one per ad, funnel stage)
+ *   7. Fire-and-forget alert detection
+ *
+ * No ON CONFLICT DO UPDATE anywhere — avoids the Supabase PostgREST bug
+ * where ignoreDuplicates is silently ignored, causing "cannot affect row
+ * a second time" errors.
+ */
+
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { fetchSnowflakeRows, mapRow, type SnowflakeCreds, type SnowflakeMapping } from '@/lib/snowflake'
+import {
+  fetchSnowflakeRows,
+  mapRow,
+  type SnowflakeCreds,
+  type SnowflakeMapping,
+} from '@/lib/snowflake'
 import { detectAlerts } from '@/lib/detect-alerts'
 
-const CHUNK_SIZE = 200  // Supabase free tier has ~5s statement timeout; 200 rows ≈ 1-2s
+// Supabase free tier has ~5 s statement timeout; 200 rows keeps us well under
+const CHUNK_SIZE = 200
 
-function getWeekStart(dateStr: string): string {
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Monday of the ISO week containing `dateStr` (YYYY-MM-DD). */
+function weekStart(dateStr: string): string {
   const d = new Date(dateStr)
   const day = d.getUTCDay()
-  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1) // Monday
-  const monday = new Date(d)
-  monday.setUTCDate(diff)
-  return monday.toISOString().slice(0, 10)
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1)
+  d.setUTCDate(diff)
+  return d.toISOString().slice(0, 10)
 }
+
+function supabaseAdmin() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+
+// ─── Types for the mapped row ───────────────────────────────────────────────
+
+type MappedRow = ReturnType<typeof mapRow>
+
+interface AdRow {
+  workspace_id: string
+  brand_id: string
+  platform: string
+  ad_id: string
+  headline: string | null
+  performance_index: number | null
+  topic: string | null
+  thumbnail_url: string | null
+  first_seen_at: string
+  last_seen_at: string
+  is_active: boolean
+  connection_id: string
+  global_ad_id?: string
+  source_platform?: string
+  format_type?: string
+}
+
+// ─── Main entry point ───────────────────────────────────────────────────────
 
 export async function syncConnection(
   connectionId: string,
-  workspaceId: string
+  workspaceId: string,
 ): Promise<{ ok: boolean; fetched: number; inserted: number; errors: string[] }> {
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  const db = supabaseAdmin()
+  const errors: string[] = []
 
-  // Load connection config
-  const { data: conn, error: connErr } = await admin
+  // ── 1. Load connection config ──────────────────────────────────────────
+
+  const { data: conn, error: connErr } = await db
     .from('snowflake_connections')
     .select('*')
     .eq('id', connectionId)
@@ -31,352 +90,347 @@ export async function syncConnection(
     .single()
 
   if (connErr || !conn) {
-    return { ok: false, fetched: 0, inserted: 0, errors: ['No Snowflake connection configured'] }
+    return { ok: false, fetched: 0, inserted: 0, errors: ['Connection not found'] }
   }
 
-  // Mark as syncing
-  await admin
-    .from('snowflake_connections')
-    .update({ sync_status: 'syncing', updated_at: new Date().toISOString() })
-    .eq('id', connectionId)
+  await setStatus(db, connectionId, 'syncing')
 
   const creds: SnowflakeCreds = {
-    account:        conn.account,
-    username:       conn.username,
-    password:       conn.password ?? undefined,
-    privateKey:     conn.private_key ?? undefined,
+    account: conn.account,
+    username: conn.username,
+    password: conn.password ?? undefined,
+    privateKey: conn.private_key ?? undefined,
     privateKeyPass: conn.private_key_pass ?? undefined,
-    role:           conn.role ?? undefined,
-    warehouse:      conn.warehouse,
-    database:       conn.database,
-    schema:         conn.schema,
+    role: conn.role ?? undefined,
+    warehouse: conn.warehouse,
+    database: conn.database,
+    schema: conn.schema,
   }
 
   const mapping: SnowflakeMapping = {
-    table:          conn.table_name,
-    colBrand:       conn.col_brand,
-    colDate:        conn.col_date,
-    colHeadline:    conn.col_headline    ?? undefined,
-    colSpend:       conn.col_spend       ?? undefined,
+    table: conn.table_name,
+    colBrand: conn.col_brand,
+    colDate: conn.col_date,
+    colHeadline: conn.col_headline ?? undefined,
+    colSpend: conn.col_spend ?? undefined,
     colImpressions: conn.col_impressions ?? undefined,
-    colReach:       conn.col_reach       ?? undefined,
-    colPi:          conn.col_pi          ?? undefined,
-    colFunnel:      conn.col_funnel      ?? undefined,
-    colTopic:       conn.col_topic       ?? undefined,
-    colThumbnail:   conn.col_thumbnail   ?? undefined,
-    colAdId:        conn.col_ad_id       ?? undefined,
-    colPlatform:    conn.col_platform    ?? undefined,
-    colIsActive:    conn.col_is_active   ?? undefined,
-    colFormat:      conn.col_format      ?? undefined,
+    colReach: conn.col_reach ?? undefined,
+    colPi: conn.col_pi ?? undefined,
+    colFunnel: conn.col_funnel ?? undefined,
+    colTopic: conn.col_topic ?? undefined,
+    colThumbnail: conn.col_thumbnail ?? undefined,
+    colAdId: conn.col_ad_id ?? undefined,
+    colPlatform: conn.col_platform ?? undefined,
+    colIsActive: conn.col_is_active ?? undefined,
+    colFormat: conn.col_format ?? undefined,
   }
+
+  // ── 2. Fetch from Snowflake ────────────────────────────────────────────
 
   const fetchResult = await fetchSnowflakeRows(creds, mapping, undefined)
 
   if (!fetchResult.ok || !fetchResult.rows) {
-    await admin
-      .from('snowflake_connections')
-      .update({ sync_status: 'error', sync_error: fetchResult.error, updated_at: new Date().toISOString() })
-      .eq('id', connectionId)
+    await setStatus(db, connectionId, 'error', fetchResult.error)
     return { ok: false, fetched: 0, inserted: 0, errors: [fetchResult.error ?? 'Fetch failed'] }
   }
 
   const rawRows = fetchResult.rows
   console.log(`[sync] Fetched ${rawRows.length} rows from Snowflake`)
 
-  // ── Step 1: Map all rows upfront ──────────────────────────────────────────
-  const mappedRows = rawRows.map(raw => mapRow(raw, mapping))
+  // ── 3. Map all rows ────────────────────────────────────────────────────
 
-  // Write total so UI can show progress
-  try {
-    await admin
-      .from('snowflake_connections')
-      .update({ sync_progress: 0, sync_total: mappedRows.length })
-      .eq('id', connectionId)
-  } catch (_) {}
+  const mapped = rawRows.map(raw => mapRow(raw, mapping))
 
-  // ── Step 2: Pre-load brand cache (1 query instead of up to N) ─────────────
-  const { data: existingBrands, error: brandsLoadErr } = await admin
+  await db
+    .from('snowflake_connections')
+    .update({ sync_progress: 0, sync_total: mapped.length })
+    .eq('id', connectionId)
+
+  // ── 4. Ensure all brands exist ─────────────────────────────────────────
+  //
+  // Collect unique brand names → load existing from DB → plain INSERT new
+  // ones (no ON CONFLICT) → reload cache.
+
+  const brandCache = new Map<string, string>() // lowercase name → uuid
+
+  const { data: existingBrands, error: brandsErr } = await db
     .from('tracked_brands')
     .select('id, name')
     .eq('workspace_id', workspaceId)
     .eq('platform', 'snowflake')
 
-  if (brandsLoadErr) {
-    console.error('[sync] Failed to load brand cache:', brandsLoadErr.message)
-    // Likely means "snowflake" is not a valid platform enum value → run migration 017
-    await admin.from('snowflake_connections').update({
-      sync_status: 'error',
-      sync_error:  `Brand cache load failed: ${brandsLoadErr.message} — run migration 017 to add snowflake platform enum`,
-      updated_at:  new Date().toISOString(),
-    }).eq('id', connectionId)
-    return { ok: false, fetched: rawRows.length, inserted: 0, errors: [brandsLoadErr.message] }
+  if (brandsErr) {
+    await setStatus(db, connectionId, 'error', `Brand load failed: ${brandsErr.message}`)
+    return { ok: false, fetched: rawRows.length, inserted: 0, errors: [brandsErr.message] }
   }
 
-  const brandCache = new Map<string, string>() // lowercased name → uuid
   for (const b of existingBrands ?? []) {
     brandCache.set(b.name.toLowerCase().trim(), b.id)
   }
 
-  // ── Step 3: Collect unique new brands → batch upsert (1 query) ───────────
-  const newBrandMap = new Map<string, string>() // normalised → original casing
-  for (const r of mappedRows) {
+  // Find brand names that don't exist yet
+  const newBrandNames = new Map<string, string>() // key → original casing
+  for (const r of mapped) {
     if (!r.brand) continue
     const key = r.brand.toLowerCase().trim()
-    if (!brandCache.has(key) && !newBrandMap.has(key)) {
-      newBrandMap.set(key, r.brand)
+    if (!brandCache.has(key) && !newBrandNames.has(key)) {
+      newBrandNames.set(key, r.brand)
     }
   }
-  if (newBrandMap.size > 0) {
-    // Use ON CONFLICT DO NOTHING (ignoreDuplicates) so that brands which already
-    // exist in a concurrent sync or from a previous run don't throw 23505 errors.
-    // Then fetch ALL brand names in a single SELECT to populate the cache — this
-    // covers both newly inserted rows and pre-existing ones skipped by DO NOTHING.
-    const { error: brandErr } = await admin
-      .from('tracked_brands')
-      .upsert(
-        [...newBrandMap.values()].map(name => ({
-          workspace_id: workspaceId,
-          name,
-          platform: 'snowflake',
-          is_own_brand: false,
-        })),
-        { onConflict: 'workspace_id,name,platform', ignoreDuplicates: true }
-      )
 
-    if (brandErr) {
-      console.error('[sync] Brand insert failed:', brandErr.message)
-      await admin.from('snowflake_connections').update({
-        sync_status: 'error',
-        sync_error:  `Brand insert failed: ${brandErr.message}`,
-        updated_at:  new Date().toISOString(),
-      }).eq('id', connectionId)
-      return { ok: false, fetched: rawRows.length, inserted: 0, errors: [brandErr.message] }
+  if (newBrandNames.size > 0) {
+    const brandRows = [...newBrandNames.values()].map(name => ({
+      workspace_id: workspaceId,
+      name,
+      platform: 'snowflake' as const,
+      is_own_brand: false,
+    }))
+
+    // Plain insert — if a race condition causes a duplicate, catch and continue
+    const { error: brandInsertErr } = await db.from('tracked_brands').insert(brandRows)
+    if (brandInsertErr && !brandInsertErr.message.includes('duplicate')) {
+      errors.push(`Brand insert: ${brandInsertErr.message}`)
     }
 
-    // Reload brand cache to pick up any rows just inserted + existing ones
-    const { data: allBrands } = await admin
+    // Reload full cache (covers both pre-existing and newly inserted)
+    const { data: allBrands } = await db
       .from('tracked_brands')
       .select('id, name')
       .eq('workspace_id', workspaceId)
       .eq('platform', 'snowflake')
+
+    brandCache.clear()
     for (const b of allBrands ?? []) {
       brandCache.set(b.name.toLowerCase().trim(), b.id)
     }
   }
 
-  console.log(`[sync] Brand cache ready: ${brandCache.size} brands`)
+  console.log(`[sync] Brand cache: ${brandCache.size} brands`)
 
-  // ── Step 4: Chunked upsert loop ───────────────────────────────────────────
-  const errors: string[] = []
-  let inserted = 0
+  // ── 5. Chunked ad + spend + enrichment insert ─────────────────────────
+  //
+  // For each chunk of mapped rows:
+  //   a. Build deduplicated ad rows (one per unique ad_id in chunk)
+  //   b. SELECT which ad_ids already exist → INSERT only new ones
+  //   c. Collect ALL spend entries (every row, not just unique ads)
+  //   d. Collect enrichment entries (one per ad, last-wins is fine)
+  //   e. Upsert spend and enrichment
+
+  const connPrefix = connectionId.slice(0, 8)
+  let totalInserted = 0
   let processed = 0
   const validStages = new Set(['see', 'think', 'do', 'care'])
-  const connPrefix = connectionId.slice(0, 8)
 
-  for (let i = 0; i < mappedRows.length; i += CHUNK_SIZE) {
-    const chunk = mappedRows.slice(i, i + CHUNK_SIZE)
+  for (let i = 0; i < mapped.length; i += CHUNK_SIZE) {
+    const chunk = mapped.slice(i, i + CHUNK_SIZE)
 
-    // Build ad rows for this chunk — use a Map keyed by conflict key so
-    // duplicates within the same chunk are collapsed (last row wins, which
-    // carries the most-recent spend/PI values from Snowflake's ordering).
-    //
-    // IMPORTANT: The Snowflake view is a monthly snapshot, so the same ad
-    // appears once per month.  We must collect ALL rows for spend (not just
-    // the last one per ad) while still deduplicating the core ad record.
-    const adRowMap       = new Map<string, Record<string, unknown>>()
-    const enrichmentRowMap = new Map<string, typeof mappedRows[0]>() // adId → last row (for funnel stage; doesn't change month-to-month)
-    const spendEntries: Array<{ adId: string; r: typeof mappedRows[0] }> = [] // ALL rows — one spend entry per month per ad
+    // ── 5a. Build ad rows (deduplicated) + spend entries (ALL rows) ────
+
+    const adRowByAdId = new Map<string, AdRow>()
+    const spendEntries: { adId: string; row: MappedRow }[] = []
+    const enrichmentByAdId = new Map<string, MappedRow>()
 
     for (const r of chunk) {
-      if (!r.brand || !r.date) {
-        errors.push(`Skipped row: missing brand (${r.brand}) or date (${r.date})`)
-        continue
-      }
+      if (!r.brand || !r.date) continue
 
       const brandId = brandCache.get(r.brand.toLowerCase().trim())
-      if (!brandId) {
-        errors.push(`No brand ID for "${r.brand}", skipping`)
-        continue
-      }
+      if (!brandId) continue
 
-      // Trim all string fields — Snowflake can return values with trailing spaces
-      const globalAdId = r.globalAdId?.trim() ?? null
-      const brand      = r.brand.trim()
-      const headline   = r.headline?.trim() ?? null
+      const globalAdId = r.globalAdId?.trim() || null
+      const brand = r.brand.trim()
+      const headline = r.headline?.trim() || null
 
-      // Determine ad_id:
-      //   • If global_ad_id is available (col_ad_id was mapped), use it directly
-      //   • Otherwise fall back to synthetic key (legacy behaviour)
+      // Deterministic ad_id: prefer Snowflake's global_ad_id, else synthetic
       const adId = globalAdId
         ? `${connPrefix}_${globalAdId}`
         : `${connPrefix}_sf_${brand}_${headline ?? 'unknown'}_${r.date}`
-            .replace(/\s+/g, '_').toLowerCase()
+            .replace(/\s+/g, '_')
+            .toLowerCase()
 
-      // Platform: use Snowflake's source_platform if available, else 'snowflake'
-      const platform = (r.platform?.trim().toLowerCase()) ?? 'snowflake'
+      const platform = r.platform?.trim().toLowerCase() || 'snowflake'
 
-      // Conflict key matches the upsert constraint: (workspace_id, platform, ad_id)
-      const conflictKey = `${workspaceId}::${platform}::${adId}`
-
-      // Build the core payload — always safe regardless of migration state
-      const adPayload: Record<string, unknown> = {
-        workspace_id:      workspaceId,
-        brand_id:          brandId,
+      // Ad row — last-wins within chunk for metadata (PI, headline, etc.)
+      const adRow: AdRow = {
+        workspace_id: workspaceId,
+        brand_id: brandId,
         platform,
-        ad_id:             adId,
+        ad_id: adId,
         headline,
         performance_index: r.performanceIndex,
-        topic:             r.topic?.trim() ?? null,
-        thumbnail_url:     r.thumbnailUrl?.trim() ?? null,
-        first_seen_at:     r.date,
-        last_seen_at:      r.date,
-        is_active:         r.isActive ?? true,
-        connection_id:     connectionId,
+        topic: r.topic?.trim() || null,
+        thumbnail_url: r.thumbnailUrl?.trim() || null,
+        first_seen_at: r.date,
+        last_seen_at: r.date,
+        is_active: r.isActive ?? true,
+        connection_id: connectionId,
       }
-      // Include migration-025 columns only when non-null (safe if migration not yet run)
-      if (globalAdId)              adPayload.global_ad_id    = globalAdId
-      if (r.platform?.trim())      adPayload.source_platform = r.platform.trim()
-      if (r.format?.trim())        adPayload.format_type     = r.format.trim()
+      if (globalAdId) adRow.global_ad_id = globalAdId
+      if (r.platform?.trim()) adRow.source_platform = r.platform.trim()
+      if (r.format?.trim()) adRow.format_type = r.format.trim()
 
-      adRowMap.set(conflictKey, adPayload)
-      enrichmentRowMap.set(adId, r)  // last-wins is fine; funnel stage doesn't vary by month
-      spendEntries.push({ adId, r }) // collect ALL rows so every month gets a spend record
+      adRowByAdId.set(adId, adRow)
+
+      // Spend: collect EVERY row (one per ad × month)
+      spendEntries.push({ adId, row: r })
+
+      // Enrichment: last-wins per ad (funnel stage doesn't change by month)
+      enrichmentByAdId.set(adId, r)
     }
 
-    const adRows = [...adRowMap.values()]
+    const adRows = [...adRowByAdId.values()]
+    if (adRows.length === 0) {
+      processed += chunk.length
+      continue
+    }
 
-    if (adRows.length === 0) continue
+    // ── 5b. SELECT existing → INSERT new ────────────────────────────────
 
-    // ── Strategy: avoid ON CONFLICT entirely ────────────────────────────────
-    // Supabase hosted PostgREST ignores the `Prefer: resolution=ignore-duplicates`
-    // header and always generates ON CONFLICT DO UPDATE, which triggers
-    // "affect row a second time" when two rows in the same batch share a
-    // secondary unique index value.  Instead we:
-    //   1. SELECT which ad_ids already exist  (1 query, no conflict)
-    //   2. INSERT only the genuinely new rows  (plain insert, no conflict clause)
-    //   3. Build adIdMap from both existing + newly inserted rows
+    const adIdList = adRows.map(r => r.ad_id)
 
-    const adIdList = adRows.map(r => r.ad_id as string)
-
-    // Step A — find pre-existing rows for this chunk
-    const { data: existingAds } = await admin
+    const { data: existing } = await db
       .from('ads')
       .select('id, ad_id')
       .eq('workspace_id', workspaceId)
       .in('ad_id', adIdList)
 
-    const adIdMap = new Map<string, string>()
-    const existingAdIdSet = new Set<string>()
-    for (const a of existingAds ?? []) {
-      adIdMap.set(a.ad_id, a.id)
-      existingAdIdSet.add(a.ad_id)
+    // ad_id (our string key) → uuid (DB primary key)
+    const adIdToUuid = new Map<string, string>()
+    const existingSet = new Set<string>()
+
+    for (const row of existing ?? []) {
+      adIdToUuid.set(row.ad_id, row.id)
+      existingSet.add(row.ad_id)
     }
 
-    // Step B — insert only rows that don't exist yet
-    const newAdRows = adRows.filter(r => !existingAdIdSet.has(r.ad_id as string))
+    const newAdRows = adRows.filter(r => !existingSet.has(r.ad_id))
     let chunkInserted = 0
+
     if (newAdRows.length > 0) {
-      const { data: insertedAds, error: insertErr } = await admin
+      const { data: inserted, error: insertErr } = await db
         .from('ads')
         .insert(newAdRows)
         .select('id, ad_id')
 
       if (insertErr) {
         const chunkNum = Math.floor(i / CHUNK_SIZE) + 1
-        errors.push(`Ad insert failed (chunk ${chunkNum}): ${insertErr.message}`)
-        // On insert failure, fall back to a SELECT so enrichment/spend still run
-        // for the pre-existing ads we already have in adIdMap.
-        console.warn(`[sync] Insert failed chunk ${chunkNum}, continuing with existing ads only`)
+        errors.push(`Chunk ${chunkNum}: ${insertErr.message}`)
+        console.error(`[sync] Insert failed chunk ${chunkNum}: ${insertErr.message}`)
       } else {
-        chunkInserted = insertedAds?.length ?? 0
-        for (const a of insertedAds ?? []) adIdMap.set(a.ad_id, a.id)
-      }
-    }
-
-    // Build enrichment + spend maps
-    const enrichmentMap = new Map<string, Record<string, unknown>>() // uuid → row
-    const spendMap      = new Map<string, Record<string, unknown>>() // `uuid::week` → row
-
-    // Enrichment: funnel stage — iterate deduplicated map (last-wins per ad is fine)
-    for (const [adId, r] of enrichmentRowMap) {
-      const uuid = adIdMap.get(adId)
-      if (!uuid) continue
-
-      if (r.funnelStage) {
-        const norm = r.funnelStage.toLowerCase()
-        if (validStages.has(norm)) {
-          const stage = norm.charAt(0).toUpperCase() + norm.slice(1) // "see" → "See"
-          enrichmentMap.set(uuid, { ad_id: uuid, funnel_stage: stage })
+        chunkInserted = inserted?.length ?? 0
+        for (const row of inserted ?? []) {
+          adIdToUuid.set(row.ad_id, row.id)
         }
       }
     }
 
-    // Spend: iterate ALL rows so every Snowflake month gets its own spend record.
-    // The map key is uuid::weekStart which naturally deduplicates if the same
-    // ad×week appears more than once in a chunk.
-    for (const { adId, r } of spendEntries) {
-      const uuid = adIdMap.get(adId)
-      if (!uuid) continue
+    // ── 5c. Build spend records (ALL rows, keyed by uuid::week) ─────────
 
-      if (r.spend != null || r.impressions != null || r.reach != null) {
-        const weekStart = getWeekStart(r.date)
-        const spendKey = `${uuid}::${weekStart}`
-        spendMap.set(spendKey, {
-          ad_id:           uuid,
-          week_start:      weekStart,
-          est_spend_eur:   r.spend,
-          est_impressions: r.impressions,
-          est_reach:       r.reach,
-        })
+    const spendMap = new Map<string, Record<string, unknown>>()
+
+    for (const { adId, row: r } of spendEntries) {
+      const uuid = adIdToUuid.get(adId)
+      if (!uuid) continue
+      if (r.spend == null && r.impressions == null && r.reach == null) continue
+
+      const week = weekStart(r.date)
+      const key = `${uuid}::${week}`
+
+      spendMap.set(key, {
+        ad_id: uuid,
+        week_start: week,
+        est_spend_eur: r.spend,
+        est_impressions: r.impressions,
+        est_reach: r.reach,
+      })
+    }
+
+    if (spendMap.size > 0) {
+      const { error: spendErr } = await db
+        .from('ad_spend_estimates')
+        .upsert([...spendMap.values()], { onConflict: 'ad_id,week_start' })
+
+      if (spendErr) {
+        errors.push(`Spend upsert: ${spendErr.message}`)
+        console.error(`[sync] Spend upsert failed: ${spendErr.message}`)
       }
     }
 
-    // Batch enrichment upsert
-    if (enrichmentMap.size > 0) {
-      await admin
+    // ── 5d. Build enrichment records (one per ad) ───────────────────────
+
+    const enrichments: Record<string, unknown>[] = []
+
+    for (const [adId, r] of enrichmentByAdId) {
+      const uuid = adIdToUuid.get(adId)
+      if (!uuid || !r.funnelStage) continue
+      const norm = r.funnelStage.toLowerCase()
+      if (!validStages.has(norm)) continue
+      enrichments.push({
+        ad_id: uuid,
+        funnel_stage: norm.charAt(0).toUpperCase() + norm.slice(1),
+      })
+    }
+
+    if (enrichments.length > 0) {
+      const { error: enrichErr } = await db
         .from('ad_enrichments')
-        .upsert([...enrichmentMap.values()], { onConflict: 'ad_id' })
+        .upsert(enrichments, { onConflict: 'ad_id' })
+
+      if (enrichErr) {
+        errors.push(`Enrichment upsert: ${enrichErr.message}`)
+      }
     }
 
-    // Batch spend upsert
-    if (spendMap.size > 0) {
-      await admin
-        .from('ad_spend_estimates')
-        .upsert([...spendMap.values()], { onConflict: 'ad_id,week_start' })
-    }
+    // ── 5e. Progress tracking ───────────────────────────────────────────
 
-    // Count only genuinely new rows successfully inserted this chunk
-    inserted  += chunkInserted
+    totalInserted += chunkInserted
     processed += chunk.length
 
-    // Progress update once per chunk
-    try {
-      await admin
-        .from('snowflake_connections')
-        .update({ sync_progress: processed })
-        .eq('id', connectionId)
-    } catch (_) {}
+    await db
+      .from('snowflake_connections')
+      .update({ sync_progress: processed })
+      .eq('id', connectionId)
+      .then(() => {}) // swallow errors
   }
 
-  // ── Step 5: Final status update ───────────────────────────────────────────
-  // NOTE: refresh_weekly_metrics is intentionally skipped — no dashboard route
-  // reads from weekly_metrics (they query ads + ad_spend_estimates directly).
-  // Running it per-week was the primary cause of syncs appearing "stuck".
-  await admin
+  // ── 6. Done — update status ────────────────────────────────────────────
+
+  console.log(`[sync] Complete: ${totalInserted} new ads, ${processed} rows processed, ${errors.length} errors`)
+
+  await db
     .from('snowflake_connections')
     .update({
-      sync_status:    'idle',
-      sync_error:     null,
-      sync_progress:  null,
-      sync_total:     null,
+      sync_status: 'idle',
+      sync_error: errors.length > 0 ? errors.slice(0, 3).join('; ') : null,
+      sync_progress: null,
+      sync_total: null,
       last_synced_at: new Date().toISOString(),
-      last_sync_rows: inserted,
-      updated_at:     new Date().toISOString(),
+      last_sync_rows: processed,
+      updated_at: new Date().toISOString(),
     })
     .eq('id', connectionId)
 
-  // Run alert detection fire-and-forget — don't let it delay the sync completing
-  detectAlerts(workspaceId).catch(err => console.error('[sync] detectAlerts failed:', err))
+  // Fire-and-forget alert detection
+  detectAlerts(workspaceId).catch(err =>
+    console.error('[sync] detectAlerts failed:', err),
+  )
 
-  return { ok: true, fetched: rawRows.length, inserted, errors }
+  return { ok: true, fetched: rawRows.length, inserted: totalInserted, errors }
+}
+
+// ─── Status helper ──────────────────────────────────────────────────────────
+
+async function setStatus(
+  db: ReturnType<typeof supabaseAdmin>,
+  connectionId: string,
+  status: 'syncing' | 'error',
+  error?: string,
+) {
+  await db
+    .from('snowflake_connections')
+    .update({
+      sync_status: status,
+      sync_error: error ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connectionId)
 }
