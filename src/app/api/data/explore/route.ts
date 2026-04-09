@@ -122,7 +122,6 @@ export async function POST(req: NextRequest) {
       ad_enrichments ( funnel_stage )
     `)
     .eq('workspace_id', workspaceId)
-    .eq('is_active', true)
 
   if (connectionId) q = q.eq('connection_id', connectionId)
 

@@ -47,7 +47,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
   const connectionId = searchParams.get('connectionId')
-  const ownBrandParam = (searchParams.get('brand') ?? 'orlen').toLowerCase().replace(/[\s\-_]/g, '')
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const supabase = await createClient()
@@ -64,13 +63,16 @@ export async function GET(req: NextRequest) {
     .eq('workspace_id', workspaceId).eq('user_id', user.id).single()
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Resolve own brand from workspace config (generic, not client-specific)
+  const { data: ws } = await admin.from('workspaces').select('own_brand').eq('id', workspaceId).single()
+  const ownBrandParam = (ws?.own_brand ?? '').toLowerCase().replace(/[\s\-_]/g, '')
+
   let adsQuery = admin
     .from('ads')
-    .select(`id, first_seen_at, is_active, performance_index,
+    .select(`id, first_seen_at, performance_index,
       tracked_brands ( name ),
       ad_spend_estimates ( week_start, est_spend_eur, est_reach )`)
     .eq('workspace_id', workspaceId)
-    .eq('is_active', true)
   if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
   const { data: rows, error } = await adsQuery
 

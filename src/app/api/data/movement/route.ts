@@ -50,7 +50,6 @@ export async function GET(req: NextRequest) {
       ad_spend_estimates ( week_start, est_spend_eur, est_reach, est_impressions )
     `)
     .eq('workspace_id', workspaceId)
-    .eq('is_active', true)
   if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
   const { data: rows, error } = await adsQuery
 

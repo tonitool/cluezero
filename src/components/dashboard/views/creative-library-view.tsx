@@ -80,11 +80,29 @@ export function CreativeLibraryView({ workspaceId, connectionId, onNavigate, edi
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return }
     setLoading(true)
-    const src = connectionId ? `&connectionId=${connectionId}` : ''
-    fetch(`/api/data/performance?workspaceId=${workspaceId}${src}`)
+    const params = new URLSearchParams({ workspaceId, sort: 'pi', pageSize: '200' })
+    if (connectionId) params.set('connectionId', connectionId)
+    fetch(`/api/data/creatives?${params}`)
       .then(r => r.json())
       .then(d => {
-        if (d.hasData && Array.isArray(d.topCreatives)) setCreatives(d.topCreatives)
+        if (Array.isArray(d.creatives)) {
+          setCreatives(d.creatives.map((c: {
+            id: string; headline?: string | null;
+            brand: { name: string } | string;
+            platform: string; performanceIndex?: number | null;
+            funnelStage?: string | null; thumbnailUrl?: string | null;
+            sentiment?: number | null;
+          }) => ({
+            id: c.id,
+            title: c.headline ?? '(no headline)',
+            brand: typeof c.brand === 'string' ? c.brand : (c.brand as { name: string }).name,
+            platform: c.platform ? c.platform.charAt(0).toUpperCase() + c.platform.slice(1).toLowerCase() : 'Unknown',
+            performanceIndex: c.performanceIndex ?? 0,
+            funnelStage: c.funnelStage ?? 'See',
+            sentiment: c.sentiment ?? 0,
+            thumbnail: c.thumbnailUrl ?? undefined,
+          })))
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))

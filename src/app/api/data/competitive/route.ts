@@ -62,12 +62,14 @@ export async function GET(req: NextRequest) {
     .eq('workspace_id', workspaceId).eq('user_id', user.id).single()
   if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  const { data: ws } = await admin.from('workspaces').select('own_brand').eq('id', workspaceId).single()
+  const ownBrandKey = (ws?.own_brand ?? '').toLowerCase().replace(/[\s\-_]/g, '')
+
   let adsQuery = admin
     .from('ads')
-    .select(`id, first_seen_at, is_active, performance_index, topic, platform,
+    .select(`id, first_seen_at, performance_index, topic, platform,
       tracked_brands ( name )`)
     .eq('workspace_id', workspaceId)
-    .eq('is_active', true)
   if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
   const { data: rows, error } = await adsQuery
 
@@ -167,30 +169,34 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // Platform strategy comparison: market avg vs orlen
+  // Platform strategy comparison: market avg vs own brand
   const allPlatCounts = brands.reduce((acc, b) => {
     const c = brandPlatformCounts[b] ?? {}
-    acc.meta += c['meta'] ?? 0
-    acc.google += c['google'] ?? 0
+    acc.meta    += c['meta'] ?? 0
+    acc.google  += c['google'] ?? 0
     acc.linkedin += c['linkedin'] ?? 0
     return acc
   }, { meta: 0, google: 0, linkedin: 0 })
   const allPlatTotal = allPlatCounts.meta + allPlatCounts.google + allPlatCounts.linkedin
-  const orlenPlat = brandPlatformCounts['orlen'] ?? {}
-  const orlenPlatTotal = Object.values(orlenPlat).reduce((s, v) => s + v, 0)
+
+  // Find own brand key dynamically from workspace config
+  const ownBrandBKey = brands.find(b => b.includes(ownBrandKey) || ownBrandKey.includes(b)) ?? brands[0] ?? ''
+  const ownBrandLabel = brandNames[ownBrandBKey] ?? ownBrandBKey.toUpperCase()
+  const ownPlat = brandPlatformCounts[ownBrandBKey] ?? {}
+  const ownPlatTotal = Object.values(ownPlat).reduce((s, v) => s + v, 0)
 
   const platformStrategyComparison = [
     {
       segment: 'Market avg.',
-      meta: allPlatTotal > 0 ? Math.round((allPlatCounts.meta / allPlatTotal) * 100) : 0,
-      google: allPlatTotal > 0 ? Math.round((allPlatCounts.google / allPlatTotal) * 100) : 0,
+      meta:     allPlatTotal > 0 ? Math.round((allPlatCounts.meta    / allPlatTotal) * 100) : 0,
+      google:   allPlatTotal > 0 ? Math.round((allPlatCounts.google  / allPlatTotal) * 100) : 0,
       linkedin: allPlatTotal > 0 ? Math.round((allPlatCounts.linkedin / allPlatTotal) * 100) : 0,
     },
     {
-      segment: 'ORLEN',
-      meta: orlenPlatTotal > 0 ? Math.round(((orlenPlat['meta'] ?? 0) / orlenPlatTotal) * 100) : 0,
-      google: orlenPlatTotal > 0 ? Math.round(((orlenPlat['google'] ?? 0) / orlenPlatTotal) * 100) : 0,
-      linkedin: orlenPlatTotal > 0 ? Math.round(((orlenPlat['linkedin'] ?? 0) / orlenPlatTotal) * 100) : 0,
+      segment: ownBrandLabel || 'Own brand',
+      meta:     ownPlatTotal > 0 ? Math.round(((ownPlat['meta']     ?? 0) / ownPlatTotal) * 100) : 0,
+      google:   ownPlatTotal > 0 ? Math.round(((ownPlat['google']   ?? 0) / ownPlatTotal) * 100) : 0,
+      linkedin: ownPlatTotal > 0 ? Math.round(((ownPlat['linkedin'] ?? 0) / ownPlatTotal) * 100) : 0,
     },
   ]
 

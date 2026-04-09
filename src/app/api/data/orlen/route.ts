@@ -35,7 +35,6 @@ export async function GET(req: NextRequest) {
       tracked_brands ( name ),
       ad_spend_estimates ( est_reach )`)
     .eq('workspace_id', workspaceId)
-    .eq('is_active', true)
   if (connectionId) adsQuery = adsQuery.eq('connection_id', connectionId)
   const { data: rows, error } = await adsQuery
 
