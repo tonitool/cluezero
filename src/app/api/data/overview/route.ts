@@ -2,15 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 function brandKey(name: string): string {
-  const n = name.toLowerCase().replace(/[\s\-_]/g, '')
-  if (n.includes('orlen')) return 'orlen'
-  if (n.includes('aral')) return 'aral'
-  if (n.includes('circlek') || n.includes('circle')) return 'circleK'
-  if (n === 'eni' || n.startsWith('eni')) return 'eni'
-  if (n.includes('esso')) return 'esso'
-  if (n.includes('shell')) return 'shell'
-  return n
+  return name.toLowerCase().replace(/[\s\-_]/g, '')
 }
 
 function getWeekStart(dateStr: string): string {
@@ -27,12 +22,23 @@ function formatWeek(dateStr: string): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
-function isNewAd(firstSeenAt: string, weekStart: string): boolean {
+/**
+ * An ad is "new" in the period containing `periodDate` if `first_seen_at`
+ * falls in the same calendar month.
+ *
+ * Why month comparison? Snowflake's V_AD_LIBRARY_FINAL_WEEKLY uses
+ * DATE_TRUNC('MONTH', sync_week) so every row's date is the 1st of a month.
+ * An ad's first appearance is therefore a month boundary, not a specific week.
+ * Comparing by 7-day window would only flag the very first week as "new" and
+ * misclassify all subsequent weeks of that same first month.
+ */
+function isNewAd(firstSeenAt: string, periodDate: string): boolean {
   const first = new Date(firstSeenAt)
-  const week = new Date(weekStart)
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekEnd.getDate() + 7)
-  return first >= week && first < weekEnd
+  const period = new Date(periodDate)
+  return (
+    first.getUTCFullYear() === period.getUTCFullYear() &&
+    first.getUTCMonth()    === period.getUTCMonth()
+  )
 }
 
 type BWData = { totalAds: number; newAds: number; spend: number; reach: number; piScores: number[] }
@@ -105,7 +111,7 @@ export async function GET(req: NextRequest) {
   const prevWeek = sortedWeeks[sortedWeeks.length - 2] ?? null
 
   // Must be defined before performanceTrend which references it
-  const ownKey = brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b)) ?? brands[0] ?? 'orlen'
+  const ownKey = brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b)) ?? brands[0] ?? ''
 
   const weeklySpendMovement = sortedWeeks.map(week => {
     const row: Record<string, unknown> = { week: formatWeek(week) }
@@ -189,7 +195,7 @@ export async function GET(req: NextRequest) {
   const latestSpendFromExisting = latestTotalSpend - latestSpendFromNew
 
   const weeklyMovementMetrics = [
-    { label: 'Total market weekly est. reach', value: Math.round(latestTotalReach).toLocaleString(), subtitle: 'unique profiles', delta: '—', direction: 'up' },
+    { label: 'Total market weekly est. reach', value: Math.round(latestTotalReach).toLocaleString(), subtitle: 'estimated impressions', delta: '—', direction: 'up' },
     { label: 'Total market weekly est. spend', value: `€${Math.round(latestTotalSpend).toLocaleString()}`, subtitle: 'across active advertisers', delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}%` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
     { label: 'From new ads', value: `€${Math.round(latestSpendFromNew).toLocaleString()}`, subtitle: `${latestTotalSpend > 0 ? (latestSpendFromNew / latestTotalSpend * 100).toFixed(1) : '0'}% of weekly movement`, delta: '—', direction: 'down' },
     { label: 'From existing ads', value: `€${Math.round(latestSpendFromExisting).toLocaleString()}`, subtitle: `${latestTotalSpend > 0 ? (latestSpendFromExisting / latestTotalSpend * 100).toFixed(1) : '0'}% of weekly movement`, delta: '—', direction: 'up' },

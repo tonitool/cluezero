@@ -2,15 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 function brandKey(name: string): string {
-  const n = name.toLowerCase().replace(/[\s\-_]/g, '')
-  if (n.includes('orlen')) return 'orlen'
-  if (n.includes('aral')) return 'aral'
-  if (n.includes('circlek') || n.includes('circle')) return 'circleK'
-  if (n === 'eni' || n.startsWith('eni')) return 'eni'
-  if (n.includes('esso')) return 'esso'
-  if (n.includes('shell')) return 'shell'
-  return n
+  return name.toLowerCase().replace(/[\s\-_]/g, '')
 }
 
 function getWeekStart(dateStr: string): string {
@@ -27,12 +22,13 @@ function formatWeek(dateStr: string): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
-function isNewAd(firstSeenAt: string, weekStart: string): boolean {
+function isNewAd(firstSeenAt: string, periodDate: string): boolean {
   const first = new Date(firstSeenAt)
-  const week = new Date(weekStart)
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekEnd.getDate() + 7)
-  return first >= week && first < weekEnd
+  const period = new Date(periodDate)
+  return (
+    first.getUTCFullYear() === period.getUTCFullYear() &&
+    first.getUTCMonth()    === period.getUTCMonth()
+  )
 }
 
 const VALID_STAGES = ['See', 'Think', 'Do', 'Care'] as const

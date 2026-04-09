@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
@@ -199,12 +201,19 @@ function getWeekStart(dateStr: string): string {
   return monday.toISOString().slice(0, 10)
 }
 
-function isNewAd(firstSeenAt: string, weekStart: string): boolean {
+/**
+ * An ad is "new" in the period containing `periodDate` if `first_seen_at`
+ * falls in the same calendar month.  Snowflake date buckets are monthly
+ * (DATE_TRUNC MONTH) so a 7-day window would wrongly classify the 2nd–4th
+ * week of the first month as "existing".
+ */
+function isNewAd(firstSeenAt: string, periodDate: string): boolean {
   const first = new Date(firstSeenAt)
-  const week = new Date(weekStart)
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekEnd.getDate() + 7)
-  return first >= week && first < weekEnd
+  const period = new Date(periodDate)
+  return (
+    first.getUTCFullYear() === period.getUTCFullYear() &&
+    first.getUTCMonth()    === period.getUTCMonth()
+  )
 }
 
 function formatWeek(dateStr: string): string {

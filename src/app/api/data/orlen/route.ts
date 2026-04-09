@@ -2,15 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 function brandKey(name: string): string {
-  const n = name.toLowerCase().replace(/[\s\-_]/g, '')
-  if (n.includes('orlen')) return 'orlen'
-  if (n.includes('aral')) return 'aral'
-  if (n.includes('circlek') || n.includes('circle')) return 'circleK'
-  if (n === 'eni' || n.startsWith('eni')) return 'eni'
-  if (n.includes('esso')) return 'esso'
-  if (n.includes('shell')) return 'shell'
-  return n
+  return name.toLowerCase().replace(/[\s\-_]/g, '')
 }
 
 export async function GET(req: NextRequest) {
