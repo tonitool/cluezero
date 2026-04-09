@@ -50,12 +50,15 @@ interface Props {
   connectionId?: string
   editMode?: boolean
   onEditModeChange?: (v: boolean) => void
+  dateFrom?: string
+  dateTo?: string
+  datePeriod?: string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PerfData = Record<string, any>
 
-export function PerformanceView({ workspaceId, connectionId, editMode = false, onEditModeChange }: Props) {
+export function PerformanceView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
   const [data, setData] = useState<PerfData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
   const [showAddSheet, setShowAddSheet] = useState(false)
@@ -74,12 +77,15 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
     if (!workspaceId) return
     setLoading(true)
     const src = connectionId ? `&connectionId=${connectionId}` : ''
-    fetch(`/api/data/performance?workspaceId=${workspaceId}${src}`)
+    const df = dateFrom ? `&from=${dateFrom}` : ''
+    const dt = dateTo ? `&to=${dateTo}` : ''
+    const dp = datePeriod ? `&period=${datePeriod}` : ''
+    fetch(`/api/data/performance?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId, connectionId])
+  }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
 
   if (loading) return (
     <div>

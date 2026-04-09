@@ -89,9 +89,14 @@ export async function POST(req: NextRequest) {
     weekRange?:   number
     connectionId?: string
     filters?:     { brands?: string[]; platforms?: string[] }
+    from?:        string  // ISO date YYYY-MM-DD
+    to?:          string  // ISO date YYYY-MM-DD
+    period?:      'week' | 'month' | 'year'
   }
 
   const { workspaceId, metricA, metricB, dimension, weekRange = 4, connectionId, filters } = body
+  const fromParam = body.from
+  const toParam = body.to
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const admin = createAdminClient(
@@ -151,7 +156,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const validWeeks = new Set(lastNWeekStarts(weekRange, latestWeek))
+  // If from/to provided, use date range instead of weekRange
+  const validWeeks = (fromParam || toParam)
+    ? new Set([...new Set(
+        ads.flatMap(ad => toArr(ad.ad_spend_estimates).map((e: Row) => String(e.week_start)))
+      )].filter(w => {
+        if (fromParam && w < fromParam) return false
+        if (toParam && w > toParam) return false
+        return true
+      }))
+    : new Set(lastNWeekStarts(weekRange, latestWeek))
 
   // Apply optional brand/platform filters
   let filtered = ads

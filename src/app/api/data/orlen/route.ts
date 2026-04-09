@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
   const connectionId = searchParams.get('connectionId')
+  const fromParam = searchParams.get('from')
+  const toParam = searchParams.get('to')
   const ownBrandParam = (searchParams.get('brand') ?? 'ORLEN').toLowerCase().replace(/[\s\-_]/g, '')
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
@@ -52,10 +54,22 @@ export async function GET(req: NextRequest) {
     const bKey = brandKey(rawName)
     brandNames[bKey] = rawName
     if (!byBrand[bKey]) byBrand[bKey] = { totalAds: 0, piScores: [], reach: 0 }
+
+    const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []
+    // Filter estimates by date range
+    const filteredEst = estimates.filter((e: { est_reach: number | null; week_start?: string }) => {
+      const ws = (e as Record<string, unknown>).week_start as string | undefined
+      if (!ws) return true
+      if (fromParam && ws < fromParam) return false
+      if (toParam && ws > toParam) return false
+      return true
+    })
+    // Skip ad entirely if all estimates are outside range
+    if (estimates.length > 0 && filteredEst.length === 0) continue
+
     byBrand[bKey].totalAds++
     if (ad.performance_index != null) byBrand[bKey].piScores.push(Number(ad.performance_index))
-    const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []
-    for (const e of estimates) {
+    for (const e of filteredEst) {
       byBrand[bKey].reach += Number((e as { est_reach: number | null }).est_reach ?? 0)
     }
   }

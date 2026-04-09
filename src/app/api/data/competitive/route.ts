@@ -4,6 +4,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
+type Period = 'week' | 'month' | 'year'
+
 function brandKey(name: string): string {
   return name.toLowerCase().replace(/[\s\-_]/g, '')
 }
@@ -22,8 +24,19 @@ function getWeekStart(dateStr: string): string {
   return monday.toISOString().slice(0, 10)
 }
 
-function formatWeek(dateStr: string): string {
-  const d = new Date(dateStr)
+function periodKeyFn(dateStr: string, period: Period): string {
+  if (period === 'week') return dateStr
+  if (period === 'month') return dateStr.slice(0, 7)
+  return dateStr.slice(0, 4)
+}
+
+function formatPeriod(key: string, period: Period): string {
+  if (period === 'year') return key
+  if (period === 'month') {
+    const d = new Date(key + '-01')
+    return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  }
+  const d = new Date(key)
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
@@ -46,6 +59,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
   const connectionId = searchParams.get('connectionId')
+  const fromParam = searchParams.get('from')
+  const toParam = searchParams.get('to')
+  const period = (searchParams.get('period') ?? 'week') as Period
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const supabase = await createClient()
@@ -87,15 +103,17 @@ export async function GET(req: NextRequest) {
   const allWeeks = new Set<string>()
 
   for (const ad of rows) {
+    const week = getWeekStart(ad.first_seen_at)
+    if (fromParam && week < fromParam) continue
+    if (toParam && week > toParam) continue
+
     const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
     const bKey = brandKey(rawName)
     brandNames[bKey] = rawName
 
-    // PI scores
     if (!brandPiScores[bKey]) brandPiScores[bKey] = []
     if (ad.performance_index != null) brandPiScores[bKey].push(Number(ad.performance_index))
 
-    // Topic
     if (ad.topic) {
       const tKey = topicKey(String(ad.topic))
       if (!brandTopicCounts[bKey]) brandTopicCounts[bKey] = {}
@@ -103,13 +121,10 @@ export async function GET(req: NextRequest) {
       topicTotalCounts[tKey] = (topicTotalCounts[tKey] ?? 0) + 1
     }
 
-    // Platform
     const plat = String(ad.platform ?? 'meta').toLowerCase()
     if (!brandPlatformCounts[bKey]) brandPlatformCounts[bKey] = {}
     brandPlatformCounts[bKey][plat] = (brandPlatformCounts[bKey][plat] ?? 0) + 1
 
-    // New ads by topic over weeks
-    const week = getWeekStart(ad.first_seen_at)
     allWeeks.add(week)
     if (ad.topic && isNewAd(ad.first_seen_at, week)) {
       const tKey = topicKey(String(ad.topic))
@@ -149,11 +164,17 @@ export async function GET(req: NextRequest) {
     return row
   })
 
-  // New ads by topic over time
-  const newAdsByTopic = sortedWeeks.map(week => {
-    const row: Record<string, unknown> = { week: formatWeek(week) }
+  // New ads by topic over time (grouped by period)
+  const periodBuckets = [...new Set(sortedWeeks.map(w => periodKeyFn(w, period)))].sort()
+  const newAdsByTopic = periodBuckets.map(bucket => {
+    const row: Record<string, unknown> = { week: formatPeriod(bucket, period) }
     for (const tKey of topTopicKeys) {
-      row[tKey] = topicNewByWeek[week]?.[tKey] ?? 0
+      let count = 0
+      for (const week of sortedWeeks) {
+        if (periodKeyFn(week, period) !== bucket) continue
+        count += topicNewByWeek[week]?.[tKey] ?? 0
+      }
+      row[tKey] = count
     }
     return row
   })

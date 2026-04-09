@@ -25,13 +25,13 @@ interface Props {
   workspaceId?:    string
   ownBrand?:       string
   connectionId?:   string
-  /** Controlled from outside (sidebar). If provided, tabs inside are hidden. */
   activeTab?:      IntelTab
-  /** Fallback when not controlled */
   initialTab?:     IntelTab
-  /** Hide the internal tab bar (when sidebar drives navigation) */
   hideTabs?:       boolean
   canEdit?:        boolean
+  dateFrom?:       string
+  dateTo?:         string
+  datePeriod?:     'week' | 'month' | 'year'
 }
 
 export function IntelligenceHubView({
@@ -39,6 +39,7 @@ export function IntelligenceHubView({
   activeTab, initialTab = 'overview',
   hideTabs = false,
   canEdit = true,
+  dateFrom, dateTo, datePeriod,
 }: Props) {
   // If activeTab is provided externally, use it (controlled); else use local state
   const [localTab, setLocalTab] = useState<IntelTab>(initialTab)
@@ -114,11 +115,11 @@ export function IntelligenceHubView({
         </div>
       )}
 
-      {tab === 'overview'    && <OverviewView    workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} />}
-      {tab === 'movement'    && <MovementView    workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} />}
-      {tab === 'competitive' && <CompetitiveView workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} />}
-      {tab === 'performance' && <PerformanceView workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} />}
-      {tab === 'brand'       && <OrlenView       workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} />}
+      {tab === 'overview'    && <OverviewView    workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} dateFrom={dateFrom} dateTo={dateTo} datePeriod={datePeriod} />}
+      {tab === 'movement'    && <MovementView    workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} dateFrom={dateFrom} dateTo={dateTo} datePeriod={datePeriod} />}
+      {tab === 'competitive' && <CompetitiveView workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} dateFrom={dateFrom} dateTo={dateTo} datePeriod={datePeriod} />}
+      {tab === 'performance' && <PerformanceView workspaceId={workspaceId} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} dateFrom={dateFrom} dateTo={dateTo} datePeriod={datePeriod} />}
+      {tab === 'brand'       && <OrlenView       workspaceId={workspaceId} ownBrand={ownBrand} connectionId={connectionId} editMode={editMode} onEditModeChange={setEditMode} dateFrom={dateFrom} dateTo={dateTo} />}
       {tab === 'creative'    && <CreativeLibraryView workspaceId={workspaceId} connectionId={connectionId} onNavigate={() => {}} editMode={editMode} onEditModeChange={setEditMode} />}
     </div>
   )

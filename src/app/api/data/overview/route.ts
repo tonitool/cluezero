@@ -4,6 +4,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
+type Period = 'week' | 'month' | 'year'
+
 function brandKey(name: string): string {
   return name.toLowerCase().replace(/[\s\-_]/g, '')
 }
@@ -17,21 +19,25 @@ function getWeekStart(dateStr: string): string {
   return monday.toISOString().slice(0, 10)
 }
 
-function formatWeek(dateStr: string): string {
-  const d = new Date(dateStr)
+/** Returns the grouping key for a week_start date based on the selected period */
+function periodKey(dateStr: string, period: Period): string {
+  if (period === 'week') return dateStr // already YYYY-MM-DD
+  if (period === 'month') return dateStr.slice(0, 7) // YYYY-MM
+  return dateStr.slice(0, 4) // YYYY
+}
+
+/** Human-readable label for a period bucket */
+function formatPeriod(key: string, period: Period): string {
+  if (period === 'year') return key
+  if (period === 'month') {
+    const d = new Date(key + '-01')
+    return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  }
+  // week: key is YYYY-MM-DD
+  const d = new Date(key)
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
-/**
- * An ad is "new" in the period containing `periodDate` if `first_seen_at`
- * falls in the same calendar month.
- *
- * Why month comparison? Snowflake's V_AD_LIBRARY_FINAL_WEEKLY uses
- * DATE_TRUNC('MONTH', sync_week) so every row's date is the 1st of a month.
- * An ad's first appearance is therefore a month boundary, not a specific week.
- * Comparing by 7-day window would only flag the very first week as "new" and
- * misclassify all subsequent weeks of that same first month.
- */
 function isNewAd(firstSeenAt: string, periodDate: string): boolean {
   const first = new Date(firstSeenAt)
   const period = new Date(periodDate)
@@ -47,6 +53,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
   const connectionId = searchParams.get('connectionId')
+  const fromParam = searchParams.get('from') // ISO date YYYY-MM-DD
+  const toParam = searchParams.get('to')     // ISO date YYYY-MM-DD
+  const period = (searchParams.get('period') ?? 'week') as Period
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const supabase = await createClient()
@@ -80,6 +89,7 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false })
 
+  // Aggregate raw data per brand × week (raw week_start values)
   const byBrandWeek: Record<string, Record<string, BWData>> = {}
   const allWeeks = new Set<string>()
   const brandNames: Record<string, string> = {}
@@ -97,6 +107,10 @@ export async function GET(req: NextRequest) {
       : [{ week: getWeekStart(ad.first_seen_at), spend: 0, reach: 0 }]
 
     for (const { week, spend, reach } of weeks) {
+      // Filter by date range if provided
+      if (fromParam && week < fromParam) continue
+      if (toParam && week > toParam) continue
+
       allWeeks.add(week)
       if (!byBrandWeek[key]) byBrandWeek[key] = {}
       if (!byBrandWeek[key][week]) byBrandWeek[key][week] = { totalAds: 0, newAds: 0, spend: 0, reach: 0, piScores: [] }
@@ -110,103 +124,136 @@ export async function GET(req: NextRequest) {
 
   const sortedWeeks = [...allWeeks].sort()
   const brands = Object.keys(byBrandWeek)
-  const latestWeek = sortedWeeks[sortedWeeks.length - 1]
-  const prevWeek = sortedWeeks[sortedWeeks.length - 2] ?? null
 
-  // Must be defined before performanceTrend which references it
-  // Exact match first (workspace own_brand now stores exact brand name from dropdown),
-  // then fuzzy, then fall back to first brand alphabetically
+  // Group weeks into period buckets (week/month/year)
+  const periodBuckets = [...new Set(sortedWeeks.map(w => periodKey(w, period)))].sort()
+  const latestBucket = periodBuckets[periodBuckets.length - 1]
+  const prevBucket = periodBuckets[periodBuckets.length - 2] ?? null
+
+  // Helper: aggregate BWData across all raw weeks that fall into a given period bucket
+  function aggregateForBucket(bKey: string, bucket: string): BWData {
+    const result: BWData = { totalAds: 0, newAds: 0, spend: 0, reach: 0, piScores: [] }
+    for (const week of sortedWeeks) {
+      if (periodKey(week, period) !== bucket) continue
+      const w = byBrandWeek[bKey]?.[week]
+      if (!w) continue
+      result.totalAds += w.totalAds
+      result.newAds += w.newAds
+      result.spend += w.spend
+      result.reach += w.reach
+      result.piScores.push(...w.piScores)
+    }
+    return result
+  }
+
+  // Helper: aggregate BWData across ALL buckets in range (for KPIs)
+  function aggregateAll(bKey: string): BWData {
+    const result: BWData = { totalAds: 0, newAds: 0, spend: 0, reach: 0, piScores: [] }
+    for (const week of sortedWeeks) {
+      const w = byBrandWeek[bKey]?.[week]
+      if (!w) continue
+      result.totalAds += w.totalAds
+      result.newAds += w.newAds
+      result.spend += w.spend
+      result.reach += w.reach
+      result.piScores.push(...w.piScores)
+    }
+    return result
+  }
+
   const ownKey = brands.find(b => b === ownBrandParam)
     ?? brands.find(b => b.includes(ownBrandParam) || ownBrandParam.includes(b))
     ?? brands[0]
     ?? ''
 
-  const weeklySpendMovement = sortedWeeks.map(week => {
-    const row: Record<string, unknown> = { week: formatWeek(week) }
-    for (const b of brands) row[b] = Math.round(byBrandWeek[b]?.[week]?.spend ?? 0)
+  const periodLabel = period === 'year' ? 'yearly' : period === 'month' ? 'monthly' : 'weekly'
+
+  // Trend charts: grouped by period buckets
+  const weeklySpendMovement = periodBuckets.map(bucket => {
+    const row: Record<string, unknown> = { week: formatPeriod(bucket, period) }
+    for (const b of brands) row[b] = Math.round(aggregateForBucket(b, bucket).spend)
     return row
   })
 
-  const spendShareTrend = sortedWeeks.map(week => {
-    const total = brands.reduce((s, b) => s + (byBrandWeek[b]?.[week]?.spend ?? 0), 0)
-    const row: Record<string, unknown> = { week: formatWeek(week) }
+  const spendShareTrend = periodBuckets.map(bucket => {
+    const total = brands.reduce((s, b) => s + aggregateForBucket(b, bucket).spend, 0)
+    const row: Record<string, unknown> = { week: formatPeriod(bucket, period) }
     for (const b of brands) {
-      row[b] = total > 0 ? Math.round(((byBrandWeek[b]?.[week]?.spend ?? 0) / total) * 100) : 0
+      row[b] = total > 0 ? Math.round((aggregateForBucket(b, bucket).spend / total) * 100) : 0
     }
     return row
   })
 
-  const newAdsTrend = sortedWeeks.map(week => {
-    const row: Record<string, unknown> = { week: formatWeek(week) }
-    for (const b of brands) row[b] = byBrandWeek[b]?.[week]?.newAds ?? 0
+  const newAdsTrend = periodBuckets.map(bucket => {
+    const row: Record<string, unknown> = { week: formatPeriod(bucket, period) }
+    for (const b of brands) row[b] = aggregateForBucket(b, bucket).newAds
     return row
   })
 
   const newVsExistingByAdvertiser = brands.map(b => {
-    let totalNew = 0, totalExisting = 0
-    for (const week of sortedWeeks) {
-      const w = byBrandWeek[b]?.[week]
-      if (w) { totalNew += w.newAds; totalExisting += w.totalAds - w.newAds }
-    }
-    const total = totalNew + totalExisting
+    const agg = aggregateAll(b)
+    const total = agg.totalAds
     return {
       advertiser: brandNames[b] ?? b,
-      newAdsPct: total > 0 ? Math.round((totalNew / total) * 100) : 0,
-      existingAdsPct: total > 0 ? Math.round((totalExisting / total) * 100) : 0,
+      newAdsPct: total > 0 ? Math.round((agg.newAds / total) * 100) : 0,
+      existingAdsPct: total > 0 ? Math.round(((total - agg.newAds) / total) * 100) : 0,
     }
   })
 
-  const performanceTrend = sortedWeeks.map(week => {
-    const orlenPis = byBrandWeek[ownKey]?.[week]?.piScores ?? []
-    const orlenAvg = orlenPis.length > 0
-      ? Math.round(orlenPis.reduce((s, v) => s + v, 0) / orlenPis.length * 10) / 10 : null
-    const allPis = brands.flatMap(b => byBrandWeek[b]?.[week]?.piScores ?? [])
+  const performanceTrend = periodBuckets.map(bucket => {
+    const ownAgg = aggregateForBucket(ownKey, bucket)
+    const ownAvg = ownAgg.piScores.length > 0
+      ? Math.round(ownAgg.piScores.reduce((s, v) => s + v, 0) / ownAgg.piScores.length * 10) / 10 : null
+    const allPis = brands.flatMap(b => aggregateForBucket(b, bucket).piScores)
     const marketAvg = allPis.length > 0
       ? Math.round(allPis.reduce((s, v) => s + v, 0) / allPis.length * 10) / 10 : null
-    return { week: formatWeek(week), orlen: orlenAvg, market: marketAvg }
+    return { week: formatPeriod(bucket, period), orlen: ownAvg, market: marketAvg }
   })
 
+  // Table: aggregate across the FULL selected range (not just latest period)
   const table = brands.map(b => {
-    const w = byBrandWeek[b]?.[latestWeek] ?? { totalAds: 0, newAds: 0, spend: 0, reach: 0, piScores: [] }
-    const avgPi = w.piScores.length > 0
-      ? Math.round(w.piScores.reduce((s, v) => s + v, 0) / w.piScores.length * 10) / 10 : null
-    return { advertiser: brandNames[b] ?? b, platform: 'META', totalAds: w.totalAds, newAds: w.newAds, weeklyReach: w.reach, weeklySpend: Math.round(w.spend), avgPi }
+    const agg = aggregateAll(b)
+    const avgPi = agg.piScores.length > 0
+      ? Math.round(agg.piScores.reduce((s, v) => s + v, 0) / agg.piScores.length * 10) / 10 : null
+    return { advertiser: brandNames[b] ?? b, platform: 'META', totalAds: agg.totalAds, newAds: agg.newAds, weeklyReach: agg.reach, weeklySpend: Math.round(agg.spend), avgPi }
   })
 
   const ownBrandLabel = brandNames[ownKey] ?? ownKey.toUpperCase()
 
-  const latestTotalSpend = brands.reduce((s, b) => s + (byBrandWeek[b]?.[latestWeek]?.spend ?? 0), 0)
-  const prevTotalSpend = prevWeek ? brands.reduce((s, b) => s + (byBrandWeek[b]?.[prevWeek]?.spend ?? 0), 0) : null
-  const spendDelta = prevTotalSpend && prevTotalSpend > 0 ? ((latestTotalSpend - prevTotalSpend) / prevTotalSpend * 100).toFixed(1) : null
-  const ownSpend = byBrandWeek[ownKey]?.[latestWeek]?.spend ?? 0
-  const ownShare = latestTotalSpend > 0 ? (ownSpend / latestTotalSpend * 100).toFixed(1) : '0'
-  const latestTotalNewAds = brands.reduce((s, b) => s + (byBrandWeek[b]?.[latestWeek]?.newAds ?? 0), 0)
-  const prevTotalNewAds = prevWeek ? brands.reduce((s, b) => s + (byBrandWeek[b]?.[prevWeek]?.newAds ?? 0), 0) : null
-  const newAdsDelta = prevTotalNewAds && prevTotalNewAds > 0 ? ((latestTotalNewAds - prevTotalNewAds) / prevTotalNewAds * 100).toFixed(1) : null
-  const ownNewAds = byBrandWeek[ownKey]?.[latestWeek]?.newAds ?? 0
-  const prevOwnNewAds = prevWeek ? (byBrandWeek[ownKey]?.[prevWeek]?.newAds ?? 0) : null
-  const ownNewAdsDelta = prevOwnNewAds != null && prevOwnNewAds > 0 ? ((ownNewAds - prevOwnNewAds) / prevOwnNewAds * 100).toFixed(1) : null
+  // KPIs: aggregate across FULL selected range
+  const totalSpend = brands.reduce((s, b) => s + aggregateAll(b).spend, 0)
+  const totalReach = brands.reduce((s, b) => s + aggregateAll(b).reach, 0)
+  const totalNewAds = brands.reduce((s, b) => s + aggregateAll(b).newAds, 0)
+  const ownAgg = aggregateAll(ownKey)
+  const ownShare = totalSpend > 0 ? (ownAgg.spend / totalSpend * 100).toFixed(1) : '0'
+
+  // Delta: compare latest period bucket vs previous
+  const latestBucketSpend = latestBucket ? brands.reduce((s, b) => s + aggregateForBucket(b, latestBucket).spend, 0) : 0
+  const prevBucketSpend = prevBucket ? brands.reduce((s, b) => s + aggregateForBucket(b, prevBucket).spend, 0) : 0
+  const spendDelta = prevBucketSpend > 0 ? ((latestBucketSpend - prevBucketSpend) / prevBucketSpend * 100).toFixed(1) : null
+  const latestBucketNewAds = latestBucket ? brands.reduce((s, b) => s + aggregateForBucket(b, latestBucket).newAds, 0) : 0
+  const prevBucketNewAds = prevBucket ? brands.reduce((s, b) => s + aggregateForBucket(b, prevBucket).newAds, 0) : 0
+  const newAdsDelta = prevBucketNewAds > 0 ? ((latestBucketNewAds - prevBucketNewAds) / prevBucketNewAds * 100).toFixed(1) : null
+  const prevVsLabel = `vs previous ${period}`
 
   const executiveMetrics = [
-    { label: 'Weekly est. market spend', value: `€${Math.round(latestTotalSpend).toLocaleString()}`, delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}% vs previous week` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
-    { label: `% ${ownBrandLabel} share of weekly est. spend`, value: `${ownShare}%`, delta: '—', direction: 'up' },
-    { label: 'New ads this week (market)', value: String(latestTotalNewAds), delta: newAdsDelta != null ? `${Number(newAdsDelta) >= 0 ? '+' : ''}${newAdsDelta}% vs previous week` : '—', direction: newAdsDelta != null && Number(newAdsDelta) >= 0 ? 'up' : 'down' },
-    { label: `${ownBrandLabel} new ads`, value: String(ownNewAds), delta: ownNewAdsDelta != null ? `${Number(ownNewAdsDelta) >= 0 ? '+' : ''}${ownNewAdsDelta}% vs previous week` : '—', direction: ownNewAdsDelta != null && Number(ownNewAdsDelta) >= 0 ? 'up' : 'down' },
+    { label: `Total est. market spend`, value: `€${Math.round(totalSpend).toLocaleString()}`, delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}% ${prevVsLabel}` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
+    { label: `% ${ownBrandLabel} share of est. spend`, value: `${ownShare}%`, delta: '—', direction: 'up' },
+    { label: `New ads (market)`, value: String(totalNewAds), delta: newAdsDelta != null ? `${Number(newAdsDelta) >= 0 ? '+' : ''}${newAdsDelta}% ${prevVsLabel}` : '—', direction: newAdsDelta != null && Number(newAdsDelta) >= 0 ? 'up' : 'down' },
+    { label: `${ownBrandLabel} new ads`, value: String(ownAgg.newAds), delta: '—', direction: 'up' },
   ]
 
-  const latestTotalReach = brands.reduce((s, b) => s + (byBrandWeek[b]?.[latestWeek]?.reach ?? 0), 0)
-  const latestSpendFromNew = brands.reduce((s, b) => {
-    const w = byBrandWeek[b]?.[latestWeek]
-    if (!w) return s
-    return s + w.spend * (w.totalAds > 0 ? w.newAds / w.totalAds : 0)
+  const spendFromNew = brands.reduce((s, b) => {
+    const agg = aggregateAll(b)
+    return s + agg.spend * (agg.totalAds > 0 ? agg.newAds / agg.totalAds : 0)
   }, 0)
-  const latestSpendFromExisting = latestTotalSpend - latestSpendFromNew
+  const spendFromExisting = totalSpend - spendFromNew
 
   const weeklyMovementMetrics = [
-    { label: 'Total market weekly est. reach', value: Math.round(latestTotalReach).toLocaleString(), subtitle: 'estimated impressions', delta: '—', direction: 'up' },
-    { label: 'Total market weekly est. spend', value: `€${Math.round(latestTotalSpend).toLocaleString()}`, subtitle: 'across active advertisers', delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}%` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
-    { label: 'From new ads', value: `€${Math.round(latestSpendFromNew).toLocaleString()}`, subtitle: `${latestTotalSpend > 0 ? (latestSpendFromNew / latestTotalSpend * 100).toFixed(1) : '0'}% of weekly movement`, delta: '—', direction: 'down' },
-    { label: 'From existing ads', value: `€${Math.round(latestSpendFromExisting).toLocaleString()}`, subtitle: `${latestTotalSpend > 0 ? (latestSpendFromExisting / latestTotalSpend * 100).toFixed(1) : '0'}% of weekly movement`, delta: '—', direction: 'up' },
+    { label: `Total market est. reach`, value: Math.round(totalReach).toLocaleString(), subtitle: 'estimated impressions', delta: '—', direction: 'up' },
+    { label: `Total market est. spend`, value: `€${Math.round(totalSpend).toLocaleString()}`, subtitle: 'across active advertisers', delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}%` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
+    { label: 'From new ads', value: `€${Math.round(spendFromNew).toLocaleString()}`, subtitle: `${totalSpend > 0 ? (spendFromNew / totalSpend * 100).toFixed(1) : '0'}% of movement`, delta: '—', direction: 'down' },
+    { label: 'From existing ads', value: `€${Math.round(spendFromExisting).toLocaleString()}`, subtitle: `${totalSpend > 0 ? (spendFromExisting / totalSpend * 100).toFixed(1) : '0'}% of movement`, delta: '—', direction: 'up' },
   ]
 
   return NextResponse.json({ hasData: true, executiveMetrics, weeklySpendMovement, spendShareTrend, weeklyMovementMetrics, newVsExistingByAdvertiser, newAdsTrend, performanceTrend, table, brands, brandNames })

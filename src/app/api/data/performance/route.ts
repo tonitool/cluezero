@@ -4,6 +4,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
+type Period = 'week' | 'month' | 'year'
+
 function brandKey(name: string): string {
   return name.toLowerCase().replace(/[\s\-_]/g, '')
 }
@@ -17,8 +19,19 @@ function getWeekStart(dateStr: string): string {
   return monday.toISOString().slice(0, 10)
 }
 
-function formatWeek(dateStr: string): string {
-  const d = new Date(dateStr)
+function periodKeyFn(dateStr: string, period: Period): string {
+  if (period === 'week') return dateStr
+  if (period === 'month') return dateStr.slice(0, 7)
+  return dateStr.slice(0, 4)
+}
+
+function formatPeriod(key: string, period: Period): string {
+  if (period === 'year') return key
+  if (period === 'month') {
+    const d = new Date(key + '-01')
+    return d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+  }
+  const d = new Date(key)
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
@@ -38,6 +51,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const workspaceId = searchParams.get('workspaceId')
   const connectionId = searchParams.get('connectionId')
+  const fromParam = searchParams.get('from')
+  const toParam = searchParams.get('to')
+  const period = (searchParams.get('period') ?? 'week') as Period
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId required' }, { status: 400 })
 
   const supabase = await createClient()
@@ -81,6 +97,10 @@ export async function GET(req: NextRequest) {
   const doStageCount = { total: 0, do: 0 }
 
   for (const ad of rows) {
+    const week = getWeekStart(ad.first_seen_at)
+    if (fromParam && week < fromParam) continue
+    if (toParam && week > toParam) continue
+
     const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
     const bKey = brandKey(rawName)
     brandNames[bKey] = rawName
@@ -89,7 +109,6 @@ export async function GET(req: NextRequest) {
     const rawStage = (enrichment as { funnel_stage?: string } | null)?.funnel_stage
     const stage = VALID_STAGES.find(s => s.toLowerCase() === (rawStage ?? '').toLowerCase()) ?? null
 
-    const week = getWeekStart(ad.first_seen_at)
     allWeeks.add(week)
 
     if (stage) {
@@ -131,14 +150,19 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // newAdsByFunnel over time
-  const newAdsByFunnel = sortedWeeks.map(week => ({
-    week: formatWeek(week),
-    see: stageNewByWeek[week]?.See ?? 0,
-    think: stageNewByWeek[week]?.Think ?? 0,
-    doo: stageNewByWeek[week]?.Do ?? 0,
-    care: stageNewByWeek[week]?.Care ?? 0,
-  }))
+  // newAdsByFunnel over time (grouped by period)
+  const periodBuckets = [...new Set(sortedWeeks.map(w => periodKeyFn(w, period)))].sort()
+  const newAdsByFunnel = periodBuckets.map(bucket => {
+    let see = 0, think = 0, doo = 0, care = 0
+    for (const week of sortedWeeks) {
+      if (periodKeyFn(week, period) !== bucket) continue
+      see += stageNewByWeek[week]?.See ?? 0
+      think += stageNewByWeek[week]?.Think ?? 0
+      doo += stageNewByWeek[week]?.Do ?? 0
+      care += stageNewByWeek[week]?.Care ?? 0
+    }
+    return { week: formatPeriod(bucket, period), see, think, doo, care }
+  })
 
   // creativeScorecards
   const avgPi = allPiScores.length > 0 ? Math.round(allPiScores.reduce((s, v) => s + v, 0) / allPiScores.length * 10) / 10 : 0

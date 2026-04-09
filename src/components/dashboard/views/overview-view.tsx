@@ -54,6 +54,9 @@ interface Props {
   connectionId?: string
   editMode?: boolean
   onEditModeChange?: (v: boolean) => void
+  dateFrom?: string
+  dateTo?: string
+  datePeriod?: string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,7 +64,7 @@ type OverviewData = Record<string, any>
 
 const TAB = 'overview'
 
-export function OverviewView({ workspaceId, connectionId, editMode = false, onEditModeChange }: Props) {
+export function OverviewView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
   const [data, setData]     = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
   const [showAddSheet, setShowAddSheet] = useState(false)
@@ -80,12 +83,15 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
     if (!workspaceId) return
     setLoading(true)
     const src = connectionId ? `&connectionId=${connectionId}` : ''
-    fetch(`/api/data/overview?workspaceId=${workspaceId}${src}`)
+    const df = dateFrom ? `&from=${dateFrom}` : ''
+    const dt = dateTo ? `&to=${dateTo}` : ''
+    const dp = datePeriod ? `&period=${datePeriod}` : ''
+    fetch(`/api/data/overview?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId, connectionId])
+  }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 

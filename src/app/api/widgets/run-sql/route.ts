@@ -63,10 +63,11 @@ export async function POST(req: NextRequest) {
   const validation = validateSql(sql)
   if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 })
 
-  // Replace template variables
+  // Replace template variables and strip trailing semicolons
   const resolvedSql = sql
     .replace(/\{\{workspaceId\}\}/g, `'${workspaceId}'`)
     .trim()
+    .replace(/;+\s*$/, '')
 
   // Wrap in a LIMIT so we never return massive result sets
   const limitedSql = /\blimit\b/i.test(resolvedSql)

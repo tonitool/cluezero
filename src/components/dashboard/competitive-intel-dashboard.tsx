@@ -143,25 +143,53 @@ const ALL_ITEMS = [
   { id: 'clients' as ViewId, label: 'Clients', icon: Users },
 ]
 
-function generateWeeks(n = 4): { value: string; label: string }[] {
-  const result = []
-  const now = new Date()
-  const day = now.getUTCDay()
-  const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1)
-  const monday = new Date(now)
-  monday.setUTCDate(diff)
-  for (let i = 0; i < n; i++) {
-    const mon = new Date(monday)
-    mon.setUTCDate(monday.getUTCDate() - i * 7)
-    const sun = new Date(mon)
-    sun.setUTCDate(mon.getUTCDate() + 6)
-    const fmt = (d: Date) => `${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}`
-    result.push({ value: `w${i}`, label: `${fmt(mon)} – ${fmt(sun)}.${sun.getUTCFullYear()}` })
-  }
-  return result
+type DatePeriod = 'week' | 'month' | 'year'
+
+interface DateRange {
+  from: string  // YYYY-MM-DD
+  to: string    // YYYY-MM-DD
+  label: string
 }
 
-const weeks = generateWeeks(4)
+function generateDateRanges(): DateRange[] {
+  const now = new Date()
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+
+  // Last 4 weeks
+  const w4From = new Date(now)
+  w4From.setUTCDate(w4From.getUTCDate() - 28)
+
+  // Last 3 months
+  const m3From = new Date(now)
+  m3From.setUTCMonth(m3From.getUTCMonth() - 3)
+
+  // Last 6 months
+  const m6From = new Date(now)
+  m6From.setUTCMonth(m6From.getUTCMonth() - 6)
+
+  // Last 12 months
+  const m12From = new Date(now)
+  m12From.setUTCMonth(m12From.getUTCMonth() - 12)
+
+  // Year to date
+  const ytdFrom = new Date(now.getUTCFullYear(), 0, 1)
+
+  return [
+    { from: fmt(w4From),  to: fmt(now), label: 'Last 4 weeks' },
+    { from: fmt(m3From),  to: fmt(now), label: 'Last 3 months' },
+    { from: fmt(m6From),  to: fmt(now), label: 'Last 6 months' },
+    { from: fmt(m12From), to: fmt(now), label: 'Last 12 months' },
+    { from: fmt(ytdFrom), to: fmt(now), label: 'Year to date' },
+    { from: '',           to: '',       label: 'All time' },
+  ]
+}
+
+const DATE_RANGES = generateDateRanges()
+const PERIOD_OPTIONS: { value: DatePeriod; label: string }[] = [
+  { value: 'week',  label: 'Weekly' },
+  { value: 'month', label: 'Monthly' },
+  { value: 'year',  label: 'Yearly' },
+]
 const WORKSPACE_VIEWS: ViewId[] = ['connections', 'setup', 'alerts', 'account', 'clients']
 
 type WorkspaceMemberRole = 'owner' | 'admin' | 'viewer' | 'client'
@@ -197,7 +225,8 @@ export function CompetitiveIntelDashboard({
   const [intelOpen,     setIntelOpen]     = useState(true)   // sidebar expand state
   const [pendingView,   setPendingView]   = useState<ViewId | null>(null)
   const [transitioning, setTransitioning] = useState(false)
-  const [week,          setWeek]          = useState('w0')
+  const [dateRange,     setDateRange]     = useState('All time')
+  const [datePeriod,    setDatePeriod]    = useState<DatePeriod>('month')
   const [sources,       setSources]       = useState<SnowflakeSource[]>([])
   const [connectionId,  setConnectionId]  = useState<string>('all')
   const [refreshKey,    setRefreshKey]    = useState(0)
@@ -289,6 +318,11 @@ export function CompetitiveIntelDashboard({
     router.push('/login')
     router.refresh()
   }
+
+  // Resolve date range from selected label
+  const selectedRange = DATE_RANGES.find(r => r.label === dateRange) ?? DATE_RANGES[DATE_RANGES.length - 1]
+  const dateFrom = selectedRange.from || undefined
+  const dateTo = selectedRange.to || undefined
 
   const activeItem = ALL_ITEMS.find(n => n.id === view) ?? ALL_ITEMS[0]
   const showWeekSelector = !WORKSPACE_VIEWS.includes(view)
@@ -530,16 +564,28 @@ export function CompetitiveIntelDashboard({
               </Select>
             )}
             {showWeekSelector && (
-              <Select value={week} onValueChange={setWeek}>
-                <SelectTrigger className="h-8 w-[180px] text-xs border-border bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {weeks.map(w => (
-                    <SelectItem key={w.value} value={w.value} className="text-xs">{w.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Select value={dateRange} onValueChange={setDateRange}>
+                  <SelectTrigger className="h-8 w-[160px] text-xs border-border bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATE_RANGES.map(r => (
+                      <SelectItem key={r.label} value={r.label} className="text-xs">{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={datePeriod} onValueChange={(v) => setDatePeriod(v as DatePeriod)}>
+                  <SelectTrigger className="h-8 w-[110px] text-xs border-border bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PERIOD_OPTIONS.map(p => (
+                      <SelectItem key={p.value} value={p.value} className="text-xs">{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
             )}
             {syncingGlobal && (
               <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-2.5 h-8">
@@ -581,8 +627,8 @@ export function CompetitiveIntelDashboard({
 
         <main className="p-6 relative">
           <PageLoader visible={transitioning} />
-          <div key={`${view}-${view === 'intelligence' ? intelTab : ''}-${refreshKey}`}>
-            {view === 'home'         && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={() => navigateTo('intelligence')} connectionId={connectionId === 'all' ? undefined : connectionId} />}
+          <div key={`${view}-${view === 'intelligence' ? intelTab : ''}-${refreshKey}-${dateRange}-${datePeriod}`}>
+            {view === 'home'         && <HomeView workspaceName={workspaceName} workspaceId={workspaceId} ownBrand={ownBrand} onNavigate={() => navigateTo('intelligence')} connectionId={connectionId === 'all' ? undefined : connectionId} dateFrom={dateFrom} dateTo={dateTo} datePeriod={datePeriod} />}
             {view === 'intelligence' && (
               <IntelligenceHubView
                 workspaceId={workspaceId}
@@ -591,6 +637,9 @@ export function CompetitiveIntelDashboard({
                 activeTab={intelTab}
                 hideTabs={true}
                 canEdit={true}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                datePeriod={datePeriod}
               />
             )}
             {view === 'canvas'       && <CanvasView workspaceId={workspaceId} connectionId={connectionId === 'all' ? undefined : connectionId} />}

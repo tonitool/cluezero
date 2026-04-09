@@ -64,12 +64,14 @@ interface Props {
   connectionId?: string
   editMode?: boolean
   onEditModeChange?: (v: boolean) => void
+  dateFrom?: string
+  dateTo?: string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OrlenData = Record<string, any>
 
-export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId, editMode = false, onEditModeChange }: Props) {
+export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId, editMode = false, onEditModeChange, dateFrom, dateTo }: Props) {
   const brandLabel = ownBrand || 'ORLEN'
   const [data, setData] = useState<OrlenData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
@@ -88,12 +90,14 @@ export function OrlenView({ workspaceId, ownBrand = 'ORLEN', connectionId, editM
     if (!workspaceId) return
     setLoading(true)
     const src = connectionId ? `&connectionId=${connectionId}` : ''
-    fetch(`/api/data/orlen?workspaceId=${workspaceId}&brand=${encodeURIComponent(brandLabel)}${src}`)
+    const df = dateFrom ? `&from=${dateFrom}` : ''
+    const dt = dateTo ? `&to=${dateTo}` : ''
+    fetch(`/api/data/orlen?workspaceId=${workspaceId}&brand=${encodeURIComponent(brandLabel)}${src}${df}${dt}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setData(d) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [workspaceId, brandLabel, connectionId])
+  }, [workspaceId, brandLabel, connectionId, dateFrom, dateTo])
 
   if (loading) return (
     <div>

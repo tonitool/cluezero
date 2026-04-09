@@ -40,6 +40,9 @@ interface Props {
   ownBrand?: string
   onNavigate: (view: ViewId) => void
   connectionId?: string
+  dateFrom?: string
+  dateTo?: string
+  datePeriod?: string
 }
 
 // ─── Explore shortcuts ────────────────────────────────────────────────────────
@@ -107,7 +110,7 @@ function renderMarkdown(text: string) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate, connectionId }: Props) {
+export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate, connectionId, dateFrom, dateTo, datePeriod }: Props) {
   // Re-render when brand colors change in Setup
   const [, setColorTick] = useState(0)
   useEffect(() => {
@@ -134,22 +137,25 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
     if (!workspaceId) return
     const brand = ownBrand ? `&brand=${encodeURIComponent(ownBrand)}` : ''
     const src = connectionId ? `&connectionId=${connectionId}` : ''
+    const df = dateFrom ? `&from=${dateFrom}` : ''
+    const dt = dateTo ? `&to=${dateTo}` : ''
+    const dp = datePeriod ? `&period=${datePeriod}` : ''
     let overviewDone = false
     let performanceDone = false
     function checkDone() {
       if (overviewDone && performanceDone) setLoading(false)
     }
-    fetch(`/api/data/overview?workspaceId=${workspaceId}${brand}${src}`)
+    fetch(`/api/data/overview?workspaceId=${workspaceId}${brand}${src}${df}${dt}${dp}`)
       .then(r => r.json())
       .then(d => { if (d.hasData) setLiveData(d) })
       .catch(() => {})
       .finally(() => { overviewDone = true; checkDone() })
-    fetch(`/api/data/performance?workspaceId=${workspaceId}${src}`)
+    fetch(`/api/data/performance?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
       .then(r => r.json())
       .then(d => { if (d.hasData && d.topCreatives?.length) setLiveCreatives(d.topCreatives) })
       .catch(() => {})
       .finally(() => { performanceDone = true; checkDone() })
-  }, [workspaceId, ownBrand, connectionId])
+  }, [workspaceId, ownBrand, connectionId, dateFrom, dateTo, datePeriod])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
