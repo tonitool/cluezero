@@ -90,6 +90,7 @@ type Mapping = {
   topicCol: string
   formatCol: string
   isActiveCol: string
+  thumbnailCol: string
 }
 
 const STEPS: { id: Step; label: string; icon: React.ElementType }[] = [
@@ -108,19 +109,20 @@ function autoFillMapping(columns: string[], currentMapping: Mapping): Mapping {
     return ''
   }
   return {
-    brandCol:       find(['advertiser_name', 'brand', 'advertiser', 'company'])           || currentMapping.brandCol,
-    dateCol:        find(['sync_week', 'date', 'week', 'day', 'month'])                   || currentMapping.dateCol,
-    adIdCol:        find(['global_ad_id', 'ad_id', 'adid'])                               || currentMapping.adIdCol,
-    platformCol:    find(['source_platform', 'platform'])                                 || currentMapping.platformCol,
-    headlineCol:    find(['ad_title', 'headline', 'creative', 'ad_name', 'title'])        || currentMapping.headlineCol,
-    spendCol:       find(['spend_est_final_eur', 'spend', 'cost', 'budget'])              || currentMapping.spendCol,
-    impressionsCol: find(['avg_impressions', 'impression', 'impr'])                       || currentMapping.impressionsCol,
-    reachCol:       find(['reach_est', 'reach', 'unique'])                                || currentMapping.reachCol,
-    piCol:          find(['performance_index_final', 'performance_index', '_pi', 'pi_', 'perf_index', 'pi']) || currentMapping.piCol,
-    funnelCol:      find(['funnel_stage_classified', 'funnel', 'stage', 'objective'])     || currentMapping.funnelCol,
-    topicCol:       find(['topic_canon', 'content_topic', 'topic', 'category', 'theme'])  || currentMapping.topicCol,
-    formatCol:      find(['format_type_normalized', 'format_type', 'ad_format', 'format']) || currentMapping.formatCol,
-    isActiveCol:    find(['is_active', 'active'])                                         || currentMapping.isActiveCol,
+    brandCol:       find(['advertiser_name', 'brand', 'advertiser', 'company'])                          || currentMapping.brandCol,
+    dateCol:        find(['sync_week', 'date', 'week', 'day', 'month'])                                  || currentMapping.dateCol,
+    adIdCol:        find(['global_ad_id', 'ad_id', 'adid'])                                              || currentMapping.adIdCol,
+    platformCol:    find(['source_platform', 'platform_name', 'platform'])                               || currentMapping.platformCol,
+    headlineCol:    find(['ad_title', 'headline', 'ad_description', 'creative', 'ad_name', 'title'])     || currentMapping.headlineCol,
+    spendCol:       find(['spend_est_final_eur', 'est_ad_spent_eur', 'spend', 'cost', 'budget'])         || currentMapping.spendCol,
+    impressionsCol: find(['avg_impressions', 'est_min_impressions', 'impression', 'impr'])                || currentMapping.impressionsCol,
+    reachCol:       find(['reach_est', 'reach', 'unique'])                                               || currentMapping.reachCol,
+    piCol:          find(['performance_index_final', 'performance_index_calc', 'performance_index_ai', 'performance_index', 'perf_index']) || currentMapping.piCol,
+    funnelCol:      find(['funnel_stage_classified', 'funnel', 'stage', 'objective'])                    || currentMapping.funnelCol,
+    topicCol:       find(['topic_canon', 'content_topic', 'ad_topic', 'topic', 'category', 'theme'])     || currentMapping.topicCol,
+    formatCol:      find(['format_type_normalized', 'format_type', 'ad_format', 'format_norm', 'format']) || currentMapping.formatCol,
+    isActiveCol:    find(['is_active', 'active'])                                                         || currentMapping.isActiveCol,
+    thumbnailCol:   find(['creative_image', 'creative_video', 'thumbnail', 'image_url', 'creative_url']) || currentMapping.thumbnailCol,
   }
 }
 
@@ -146,6 +148,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     brandCol: '', dateCol: '', adIdCol: '', platformCol: '',
     headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '',
     piCol: '', funnelCol: '', topicCol: '', formatCol: '', isActiveCol: '',
+    thumbnailCol: '',
   })
   const [detecting, setDetecting] = useState(false)
   const [detectError, setDetectError] = useState<string | null>(null)
@@ -156,7 +159,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
     setStep('credentials')
     setAuthMode('password')
     setCreds({ connectionName: '', account: '', username: '', password: '', privateKey: '', privateKeyPass: '', role: '', warehouse: '', database: '', schema: '', table: '' })
-    setMapping({ brandCol: '', dateCol: '', adIdCol: '', platformCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '', formatCol: '', isActiveCol: '' })
+    setMapping({ brandCol: '', dateCol: '', adIdCol: '', platformCol: '', headlineCol: '', spendCol: '', impressionsCol: '', reachCol: '', piCol: '', funnelCol: '', topicCol: '', formatCol: '', isActiveCol: '', thumbnailCol: '' })
     setDetecting(false)
     setDetectError(null)
     setSaving(false)
@@ -267,6 +270,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
               colTopic:       mapping.topicCol       || undefined,
               colFormat:      mapping.formatCol      || undefined,
               colIsActive:    mapping.isActiveCol    || undefined,
+              colThumbnail:   mapping.thumbnailCol   || undefined,
             },
           }),
         })
@@ -551,6 +555,7 @@ export function SnowflakeConnectSheet({ open, onOpenChange, onConnected, workspa
                   { id: 'topicCol',       label: 'Topic / category',           placeholder: 'TOPIC_CANON',               required: false },
                   { id: 'formatCol',      label: 'Ad format type',             placeholder: 'FORMAT_TYPE_NORMALIZED',    required: false },
                   { id: 'isActiveCol',    label: 'Is active flag',             placeholder: 'IS_ACTIVE',                 required: false },
+                  { id: 'thumbnailCol',   label: 'Creative image URL',         placeholder: 'CREATIVE_IMAGE',            required: false },
                 ] as { id: keyof Mapping; label: string; placeholder: string; required: boolean }[]).map(field => (
                   <div key={field.id} className="flex flex-col gap-1.5">
                     <Label htmlFor={`sf-${field.id}`} className="text-xs">

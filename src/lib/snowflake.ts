@@ -148,7 +148,28 @@ export async function fetchSnowflakeRows(
 
       const fullTable = `${creds.database}.${creds.schema}.${mapping.table}`
       const whereClause = since ? `WHERE ${mapping.colDate} >= '${since}'` : ''
-      const sql = `SELECT * FROM ${fullTable} ${whereClause}`
+
+      // Build SELECT with only the mapped columns to avoid pulling huge
+      // blobs (e.g. JSON_RAW). Always include the required columns, plus
+      // any optional mapped columns.
+      const cols = new Set<string>()
+      cols.add(mapping.colBrand)
+      cols.add(mapping.colDate)
+      if (mapping.colHeadline) cols.add(mapping.colHeadline)
+      if (mapping.colSpend) cols.add(mapping.colSpend)
+      if (mapping.colImpressions) cols.add(mapping.colImpressions)
+      if (mapping.colReach) cols.add(mapping.colReach)
+      if (mapping.colPi) cols.add(mapping.colPi)
+      if (mapping.colFunnel) cols.add(mapping.colFunnel)
+      if (mapping.colTopic) cols.add(mapping.colTopic)
+      if (mapping.colThumbnail) cols.add(mapping.colThumbnail)
+      if (mapping.colAdId) cols.add(mapping.colAdId)
+      if (mapping.colPlatform) cols.add(mapping.colPlatform)
+      if (mapping.colIsActive) cols.add(mapping.colIsActive)
+      if (mapping.colFormat) cols.add(mapping.colFormat)
+      const colList = [...cols].map(c => `"${c.toUpperCase()}"`).join(', ')
+
+      const sql = `SELECT ${colList} FROM ${fullTable} ${whereClause}`
 
       conn.execute({
         sqlText: sql,
