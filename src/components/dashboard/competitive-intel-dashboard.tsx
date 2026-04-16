@@ -283,7 +283,15 @@ export function CompetitiveIntelDashboard({
 
   function getExportApiUrl() {
     const src = connectionId !== 'all' ? `&connectionId=${connectionId}` : ''
-    return `/api/data/overview?workspaceId=${workspaceId}${src}`
+    const df = dateFrom ? `&from=${dateFrom}` : ''
+    const dt = dateTo ? `&to=${dateTo}` : ''
+    const dp = `&period=${datePeriod}`
+    const viewApiMap: Record<string, string> = {
+      home: 'overview',
+      intelligence: intelTab === 'movement' ? 'movement' : intelTab === 'competitive' ? 'competitive' : intelTab === 'performance' ? 'performance' : 'overview',
+    }
+    const apiName = viewApiMap[view] ?? 'overview'
+    return `/api/data/${apiName}?workspaceId=${workspaceId}${src}${df}${dt}${dp}`
   }
 
   async function handleExportCSV() {
@@ -515,7 +523,7 @@ export function CompetitiveIntelDashboard({
               >
                 {workspaceName}
               </button>
-              <span className="text-[10px] text-sidebar-foreground/50">Admin</span>
+              <span className="text-[10px] text-sidebar-foreground/50 capitalize">{userRole ?? 'member'}</span>
             </div>
             <button
               onClick={handleSignOut}

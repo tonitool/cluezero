@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { loadAliasMap } from '@/lib/brand-aliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +68,7 @@ export async function GET(req: NextRequest) {
       first_seen_at,
       is_active,
       performance_index,
+      platform,
       tracked_brands ( name ),
       ad_spend_estimates ( week_start, est_spend_eur, est_reach, est_impressions )
     `)
@@ -77,6 +79,8 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false, metrics: [] })
+
+  const aliasMap = await loadAliasMap(workspaceId)
 
   // Aggregate per brand + week
   type BrandWeek = {
@@ -89,9 +93,15 @@ export async function GET(req: NextRequest) {
 
   const byBrandWeek: Record<string, Record<string, BrandWeek>> = {}
   const allWeeks = new Set<string>()
+  const brandPlatforms: Record<string, Record<string, number>> = {}
 
   for (const ad of rows) {
-    const brand = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
+    const rawBrand = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
+    const brand = aliasMap.resolve(rawBrand)
+    if (!brand) continue // excluded
+    const plat = ((ad as Record<string, unknown>).platform as string | null)?.toUpperCase() ?? 'UNKNOWN'
+    if (!brandPlatforms[brand]) brandPlatforms[brand] = {}
+    brandPlatforms[brand][plat] = (brandPlatforms[brand][plat] ?? 0) + 1
     const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []
 
     if (estimates.length === 0) {
@@ -190,8 +200,13 @@ export async function GET(req: NextRequest) {
     const avgPi = agg.piScores.length > 0
       ? Math.round(agg.piScores.reduce((s, v) => s + v, 0) / agg.piScores.length * 10) / 10
       : null
+    const platCounts = brandPlatforms[brand] ?? {}
+    const topPlatform = Object.entries(platCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—'
+    const platformLabel = Object.keys(platCounts).length > 1
+      ? `${topPlatform} +${Object.keys(platCounts).length - 1}`
+      : topPlatform
     return {
-      advertiser: brand, platform: 'META',
+      advertiser: brand, platform: platformLabel,
       totalAds: agg.totalAds, newAds: agg.newAds,
       weeklyReach: agg.reach, weeklySpend: Math.round(agg.spend), avgPi,
     }
@@ -214,8 +229,8 @@ export async function GET(req: NextRequest) {
     const allScores = brands.flatMap(b => aggBrandBucket(b, bucket).piScores)
     const marketAvg = allScores.length > 0
       ? Math.round(allScores.reduce((s, v) => s + v, 0) / allScores.length * 10) / 10 : null
-    return { week: formatPeriod(bucket, period), orlen: ownAvg, market: marketAvg }
-  }).filter(p => p.orlen !== null || p.market !== null)
+    return { week: formatPeriod(bucket, period), ownBrand: ownAvg, market: marketAvg }
+  }).filter(p => p.ownBrand !== null || p.market !== null)
 
   return NextResponse.json({
     hasData: true,
@@ -225,6 +240,7 @@ export async function GET(req: NextRequest) {
     newVsExisting,
     table,
     performanceTrend,
+    ownBrandLabel: ownBrandFull ?? 'Brand',
   })
 }
 

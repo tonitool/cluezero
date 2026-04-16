@@ -12,7 +12,6 @@ import { FUNNEL_COLORS } from '@/components/dashboard/_components/constants'
 import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
 import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT } from '@/components/dashboard/_components/chart-theme'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { EditModeBar } from '@/components/dashboard/widget-system/edit-mode-bar'
 import { AddWidgetSheet } from '@/components/dashboard/widget-system/add-widget-sheet'
 import { SqlWidgetCard } from '@/components/dashboard/widget-system/sql-widget-card'
@@ -200,9 +199,8 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
         <p className="text-xs text-muted-foreground">No creative data available.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
-          {topCreatives.map((creative: { id: string; platform: string; performanceIndex: number; title: string; brand: string; funnelStage: string; sentiment: number; thumbnail?: string }, ci: number) => {
+          {topCreatives.map((creative: { id: string; platform: string; performanceIndex: number; title: string; brand: string; funnelStage: string; thumbnail?: string }, ci: number) => {
             const platformColor = PLATFORM_BADGE_COLORS[creative.platform] ?? '#888'
-            const sentimentPct  = ((creative.sentiment + 1) / 2) * 100
             const brandInitial  = creative.brand.charAt(0).toUpperCase()
             const brandColor    = getBrandColor(creative.brand, ci)
 
@@ -242,8 +240,9 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
                     <span className="text-[10px] text-muted-foreground shrink-0">{creative.funnelStage}</span>
                   </div>
                   <div className="mt-2">
-                    <p className="text-[10px] text-muted-foreground">Sentiment</p>
-                    <Progress value={sentimentPct} className="h-1.5 mt-0.5" />
+                    <div className="h-1.5 rounded-full mt-0.5" style={{
+                      background: `linear-gradient(90deg, ${piColor(creative.performanceIndex)}40 ${Math.min(creative.performanceIndex, 100)}%, #f4f4f5 ${Math.min(creative.performanceIndex, 100)}%)`,
+                    }} />
                   </div>
                 </div>
               </div>

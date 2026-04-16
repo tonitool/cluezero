@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { loadAliasMap } from '@/lib/brand-aliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +45,8 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false })
 
+  const aliasMap = await loadAliasMap(workspaceId)
+
   // Aggregate per brand
   type BrandStats = { totalAds: number; piScores: number[]; reach: number }
   const byBrand: Record<string, BrandStats> = {}
@@ -51,8 +54,10 @@ export async function GET(req: NextRequest) {
 
   for (const ad of rows) {
     const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
-    const bKey = brandKey(rawName)
-    brandNames[bKey] = rawName
+    const resolvedName = aliasMap.resolve(rawName)
+    if (!resolvedName) continue // excluded
+    const bKey = brandKey(resolvedName)
+    brandNames[bKey] = resolvedName
     if (!byBrand[bKey]) byBrand[bKey] = { totalAds: 0, piScores: [], reach: 0 }
 
     const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []

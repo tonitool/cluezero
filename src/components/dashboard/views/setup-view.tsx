@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Check, Loader2, AlertCircle, Sparkles, X, Trash2, Database, Shuffle } from 'lucide-react'
+import { Plus, Check, Loader2, AlertCircle, Sparkles, X, Trash2, Database, Shuffle, GitMerge } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { setBrandColors as cacheBrandColors, RANDOM_PALETTE } from '@/lib/brand-colors'
+import { BrandOrchestrator } from '@/components/dashboard/_components/brand-orchestrator'
 
 const PLATFORM_COLORS: Record<string, string> = {
   Meta:     '#1877F2',
@@ -858,6 +859,18 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
             </div>
           </SectionCard>
         </div>
+      </div>
+
+      {/* ── Data Orchestrator ── */}
+      <div className="bg-white rounded-lg border border-border shadow-sm p-5 mt-4">
+        <div className="flex items-center gap-2 mb-1">
+          <GitMerge className="size-4 text-indigo-500" />
+          <p className="text-sm font-semibold">Data Orchestrator</p>
+        </div>
+        <p className="text-xs text-muted-foreground mb-5">
+          Clean up brand names from your data sources. Merge duplicates, fix typos, and exclude old or irrelevant brands. Changes apply across all dashboards and reports.
+        </p>
+        <BrandOrchestrator workspaceId={workspaceId} />
       </div>
     </div>
   )

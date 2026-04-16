@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { loadAliasMap } from '@/lib/brand-aliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,6 +90,8 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false })
 
+  const aliasMap = await loadAliasMap(workspaceId)
+
   // Aggregate raw data per brand × week (raw week_start values)
   const byBrandWeek: Record<string, Record<string, BWData>> = {}
   const allWeeks = new Set<string>()
@@ -96,8 +99,10 @@ export async function GET(req: NextRequest) {
 
   for (const ad of rows) {
     const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
-    const key = brandKey(rawName)
-    brandNames[key] = rawName
+    const resolvedName = aliasMap.resolve(rawName)
+    if (!resolvedName) continue // excluded brand
+    const key = brandKey(resolvedName)
+    brandNames[key] = resolvedName
     const estimates = Array.isArray(ad.ad_spend_estimates) ? ad.ad_spend_estimates : []
 
     const weeks = estimates.length > 0
@@ -207,7 +212,7 @@ export async function GET(req: NextRequest) {
     const allPis = brands.flatMap(b => aggregateForBucket(b, bucket).piScores)
     const marketAvg = allPis.length > 0
       ? Math.round(allPis.reduce((s, v) => s + v, 0) / allPis.length * 10) / 10 : null
-    return { week: formatPeriod(bucket, period), orlen: ownAvg, market: marketAvg }
+    return { week: formatPeriod(bucket, period), ownBrand: ownAvg, market: marketAvg }
   })
 
   // Table: aggregate across the FULL selected range (not just latest period)
@@ -237,10 +242,10 @@ export async function GET(req: NextRequest) {
   const prevVsLabel = `vs previous ${period}`
 
   const executiveMetrics = [
-    { label: `Total est. market spend`, value: `€${Math.round(totalSpend).toLocaleString()}`, delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}% ${prevVsLabel}` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
-    { label: `% ${ownBrandLabel} share of est. spend`, value: `${ownShare}%`, delta: '—', direction: 'up' },
-    { label: `New ads (market)`, value: String(totalNewAds), delta: newAdsDelta != null ? `${Number(newAdsDelta) >= 0 ? '+' : ''}${newAdsDelta}% ${prevVsLabel}` : '—', direction: newAdsDelta != null && Number(newAdsDelta) >= 0 ? 'up' : 'down' },
-    { label: `${ownBrandLabel} new ads`, value: String(ownAgg.newAds), delta: '—', direction: 'up' },
+    { label: `Total est. market spend`, value: `€${Math.round(totalSpend).toLocaleString()}`, delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}% ${prevVsLabel}` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down', info: 'Total estimated ad spend across all tracked competitors. Shows how much the market is investing in paid media.' },
+    { label: `% ${ownBrandLabel} share of est. spend`, value: `${ownShare}%`, delta: '—', direction: 'up', info: 'Your brand\'s share of the total market ad spend. Higher share = more visibility vs competitors.' },
+    { label: `New ads (market)`, value: String(totalNewAds), delta: newAdsDelta != null ? `${Number(newAdsDelta) >= 0 ? '+' : ''}${newAdsDelta}% ${prevVsLabel}` : '—', direction: newAdsDelta != null && Number(newAdsDelta) >= 0 ? 'up' : 'down', info: 'Total new ads launched across all competitors. Rising count signals increased market activity.' },
+    { label: `${ownBrandLabel} new ads`, value: String(ownAgg.newAds), delta: '—', direction: 'up', info: 'New ads launched by your brand in the selected period. Compare with market total to gauge your creative output.' },
   ]
 
   const spendFromNew = brands.reduce((s, b) => {
@@ -250,11 +255,11 @@ export async function GET(req: NextRequest) {
   const spendFromExisting = totalSpend - spendFromNew
 
   const weeklyMovementMetrics = [
-    { label: `Total market est. reach`, value: Math.round(totalReach).toLocaleString(), subtitle: 'estimated impressions', delta: '—', direction: 'up' },
-    { label: `Total market est. spend`, value: `€${Math.round(totalSpend).toLocaleString()}`, subtitle: 'across active advertisers', delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}%` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down' },
-    { label: 'From new ads', value: `€${Math.round(spendFromNew).toLocaleString()}`, subtitle: `${totalSpend > 0 ? (spendFromNew / totalSpend * 100).toFixed(1) : '0'}% of movement`, delta: '—', direction: 'down' },
-    { label: 'From existing ads', value: `€${Math.round(spendFromExisting).toLocaleString()}`, subtitle: `${totalSpend > 0 ? (spendFromExisting / totalSpend * 100).toFixed(1) : '0'}% of movement`, delta: '—', direction: 'up' },
+    { label: `Total market est. reach`, value: Math.round(totalReach).toLocaleString(), subtitle: 'estimated impressions', delta: '—', direction: 'up', info: 'Estimated total audience reached by all tracked ads. Indicates overall market visibility.' },
+    { label: `Total market est. spend`, value: `€${Math.round(totalSpend).toLocaleString()}`, subtitle: 'across active advertisers', delta: spendDelta != null ? `${Number(spendDelta) >= 0 ? '+' : ''}${spendDelta}%` : '—', direction: spendDelta != null && Number(spendDelta) >= 0 ? 'up' : 'down', info: 'Combined estimated ad spend for all tracked brands in the selected period.' },
+    { label: 'From new ads', value: `€${Math.round(spendFromNew).toLocaleString()}`, subtitle: `${totalSpend > 0 ? (spendFromNew / totalSpend * 100).toFixed(1) : '0'}% of movement`, delta: '—', direction: 'down', info: 'Spend allocated to newly launched creatives. High ratio = market is actively pushing fresh content.' },
+    { label: 'From existing ads', value: `€${Math.round(spendFromExisting).toLocaleString()}`, subtitle: `${totalSpend > 0 ? (spendFromExisting / totalSpend * 100).toFixed(1) : '0'}% of movement`, delta: '—', direction: 'up', info: 'Spend on ads that were already running. High ratio = competitors are scaling proven creatives.' },
   ]
 
-  return NextResponse.json({ hasData: true, executiveMetrics, weeklySpendMovement, spendShareTrend, weeklyMovementMetrics, newVsExistingByAdvertiser, newAdsTrend, performanceTrend, table, brands, brandNames })
+  return NextResponse.json({ hasData: true, executiveMetrics, weeklySpendMovement, spendShareTrend, weeklyMovementMetrics, newVsExistingByAdvertiser, newAdsTrend, performanceTrend, table, brands, brandNames, ownBrandLabel })
 }

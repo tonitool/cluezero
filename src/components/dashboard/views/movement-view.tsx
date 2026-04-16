@@ -43,7 +43,8 @@ interface MovementData {
   newAdsTrend: Record<string, unknown>[]
   newVsExisting: { advertiser: string; newAdsPct: number; existingAdsPct: number }[]
   table: { advertiser: string; platform: string; totalAds: number; newAds: number; weeklyReach: number; weeklySpend: number; avgPi: number | null }[]
-  performanceTrend: { week: string; orlen: number | null; market: number | null }[]
+  performanceTrend: { week: string; ownBrand: number | null; market: number | null }[]
+  ownBrandLabel?: string
 }
 
 interface Props {
@@ -114,15 +115,13 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
           label: 'Total market weekly est. reach',
           value: data.kpis.totalWeeklyReach.toLocaleString(),
           subtitle: 'unique profiles',
-          delta: '',
-          direction: 'up' as const,
+          info: 'Estimated total audience reached by all tracked ads in the selected period.',
         },
         {
           label: 'Total market weekly est. spend',
           value: `€${data.kpis.totalWeeklySpend.toLocaleString()}`,
           subtitle: 'across active advertisers',
-          delta: '',
-          direction: 'up' as const,
+          info: 'Combined estimated ad spend across all tracked competitors.',
         },
       ]
     : []
@@ -161,15 +160,14 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
             label={metric.label}
             value={metric.value}
             subtitle={metric.subtitle}
-            delta={metric.delta}
-            direction={metric.direction}
+            info={metric.info}
           />
         ))}
       </div>
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">
-        <ChartCard title="New vs Existing Ads" height={280}>
+        <ChartCard title="New vs Existing Ads" height={280} info="How much each competitor is refreshing their creative. High new-ad % signals an active campaign push or creative testing phase.">
           <div style={{ width: '100%', height: '100%' }}>
             {newVsExisting.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -187,7 +185,7 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
           </div>
         </ChartCard>
 
-        <ChartCard title="New Ads Trend" height={280}>
+        <ChartCard title="New Ads Trend" height={280} info="Volume of newly launched ads per competitor over time. Spikes reveal campaign launches.">
           <div style={{ width: '100%', height: '100%' }}>
             {newAdsTrendData.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -218,7 +216,7 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
 
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-        <ChartCard title="Performance Index Trend" height={280}>
+        <ChartCard title="Performance Index Trend" height={280} info="Performance Index (0–100) measures ad effectiveness. Above 70 = high performer. Compare your brand vs market average.">
           <div style={{ width: '100%', height: '100%' }}>
             {performanceTrend.length === 0 ? <EmptyState label="No PI data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -228,7 +226,7 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
                   <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
                   <Tooltip content={(p) => <ChartTooltip {...p} />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Line type="monotone" dataKey="orlen" name="Brand" stroke={getBrandColor('orlen', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                  <Line type="monotone" dataKey="ownBrand" name={data?.ownBrandLabel ?? 'Brand'} stroke={getBrandColor(data?.ownBrandLabel ?? 'Brand', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                   <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
                 </LineChart>
               </ResponsiveContainer>

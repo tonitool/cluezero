@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { loadAliasMap } from '@/lib/brand-aliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +84,8 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!rows || rows.length === 0) return NextResponse.json({ hasData: false })
 
+  const aliasMap = await loadAliasMap(workspaceId)
+
   const brandNames: Record<string, string> = {}
   // funnel stage counts: total and per brand
   const stageTotals: Record<FunnelStage, number> = { See: 0, Think: 0, Do: 0, Care: 0 }
@@ -102,8 +105,10 @@ export async function GET(req: NextRequest) {
     if (toParam && week > toParam) continue
 
     const rawName = ((ad.tracked_brands as unknown) as { name: string } | null)?.name ?? 'Unknown'
-    const bKey = brandKey(rawName)
-    brandNames[bKey] = rawName
+    const resolvedName = aliasMap.resolve(rawName)
+    if (!resolvedName) continue // excluded
+    const bKey = brandKey(resolvedName)
+    brandNames[bKey] = resolvedName
 
     const enrichment = Array.isArray(ad.ad_enrichments) ? ad.ad_enrichments[0] : ad.ad_enrichments
     const rawStage = (enrichment as { funnel_stage?: string } | null)?.funnel_stage

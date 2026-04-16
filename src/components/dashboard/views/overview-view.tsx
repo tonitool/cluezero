@@ -125,6 +125,7 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
   const weeklyMovementTable       = data?.table                     ?? []
   const activeBrands: string[]    = data?.brands     ?? []
   const brandNames: Record<string, string> = data?.brandNames ?? {}
+  const ownBrandLabel: string     = data?.ownBrandLabel ?? 'Brand'
 
   if (loading) {
     return (
@@ -185,8 +186,8 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
           {/* Row 1: Executive KPIs (full-width) */}
           <W id="kpis-executive" colSpan={2}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {executiveMetrics.map((m: { label: string; value: string; delta: string; direction: 'up' | 'down' }) => (
-                <KpiCard key={m.label} label={m.label} value={m.value} delta={m.delta} direction={m.direction} />
+              {executiveMetrics.map((m: { label: string; value: string; delta: string; direction: 'up' | 'down'; info?: string }) => (
+                <KpiCard key={m.label} label={m.label} value={m.value} delta={m.delta} direction={m.direction} info={m.info} />
               ))}
             </div>
           </W>
@@ -194,7 +195,7 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
           {/* Row 2: Spend charts */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">
             <W id="chart-weekly-spend">
-              <ChartCard title="Weekly Est. Spend Movement" height={260}>
+              <ChartCard title="Weekly Est. Spend Movement" height={260} info="Estimated weekly ad spend per competitor. Spot when rivals ramp up budgets so you can respond quickly.">
                 <div style={{ width: '100%', height: '100%' }}>
                   {weeklySpendMovement.length === 0 ? <EmptyState label="No spend data" /> : (
                     <ResponsiveContainer width="100%" height="100%">
@@ -215,7 +216,7 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
             </W>
 
             <W id="chart-spend-share">
-              <ChartCard title="Share of Weekly Est. Spend" height={260}>
+              <ChartCard title="Share of Weekly Est. Spend" height={260} info="Your share of total market ad spend over time. Rising share means you're gaining visibility; falling share means competitors are outspending you.">
                 <div style={{ width: '100%', height: '100%' }}>
                   {spendShareTrend.length === 0 ? <EmptyState label="No spend data" /> : (
                     <ResponsiveContainer width="100%" height="100%">
@@ -241,15 +242,15 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
 
           <W id="kpis-movement" colSpan={2}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {weeklyMovementMetrics.map((m: { label: string; value: string; subtitle?: string; delta: string; direction: 'up' | 'down' }) => (
-                <KpiCard key={m.label} label={m.label} value={m.value} subtitle={m.subtitle} delta={m.delta} direction={m.direction} />
+              {weeklyMovementMetrics.map((m: { label: string; value: string; subtitle?: string; delta: string; direction: 'up' | 'down'; info?: string }) => (
+                <KpiCard key={m.label} label={m.label} value={m.value} subtitle={m.subtitle} delta={m.delta} direction={m.direction} info={m.info} />
               ))}
             </div>
           </W>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">
             <W id="chart-new-vs-existing">
-              <ChartCard title="New vs Existing Ads" height={280}>
+              <ChartCard title="New vs Existing Ads" height={280} info="How much each competitor is refreshing their creative. High new-ad % signals an active campaign push or creative testing phase.">
                 <div style={{ width: '100%', height: '100%' }}>
                   {newVsExistingByAdvertiser.length === 0 ? <EmptyState label="No data" /> : (
                     <ResponsiveContainer width="100%" height="100%">
@@ -269,7 +270,7 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
             </W>
 
             <W id="chart-new-ads-trend">
-              <ChartCard title="New Ads Trend" height={280}>
+              <ChartCard title="New Ads Trend" height={280} info="Volume of newly launched ads per competitor over time. Spikes reveal campaign launches — use this to benchmark your creative output cadence.">
                 <div style={{ width: '100%', height: '100%' }}>
                   {newAdsTrend.length === 0 ? <EmptyState label="No data" /> : (
                     <ResponsiveContainer width="100%" height="100%">
@@ -292,7 +293,7 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
             <W id="chart-pi-trend">
-              <ChartCard title="Performance Index Trend" height={280}>
+              <ChartCard title="Performance Index Trend" height={280} info="Performance Index (PI) measures ad effectiveness on a 0–100 scale. Above 70 = high performer. Track how your brand compares to the market average over time.">
                 <div style={{ width: '100%', height: '100%' }}>
                   {performanceTrend.length === 0 ? <EmptyState label="No PI data" /> : (
                     <ResponsiveContainer width="100%" height="100%">
@@ -302,7 +303,7 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
                         <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto','auto']} />
                         <Tooltip content={(p) => <ChartTooltip {...p} />} />
                         <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                        <Line type="monotone" dataKey="orlen" name="Brand" stroke={getBrandColor('orlen', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                        <Line type="monotone" dataKey="ownBrand" name={ownBrandLabel} stroke={getBrandColor(ownBrandLabel, 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
                         <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
                       </LineChart>
                     </ResponsiveContainer>
