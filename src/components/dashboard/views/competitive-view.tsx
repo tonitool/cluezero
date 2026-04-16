@@ -49,6 +49,7 @@ type CompetitiveData = Record<string, any>
 export function CompetitiveView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
   const [data, setData] = useState<CompetitiveData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [error, setError] = useState<string | null>(null)
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   // Re-render when brand colors change in Setup
@@ -68,10 +69,11 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
     const df = dateFrom ? `&from=${dateFrom}` : ''
     const dt = dateTo ? `&to=${dateTo}` : ''
     const dp = datePeriod ? `&period=${datePeriod}` : ''
+    setError(null)
     fetch(`/api/data/competitive?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`Server error (${r.status})`); return r.json() })
       .then(d => { if (d.hasData) setData(d) })
-      .catch(() => {})
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load data'))
       .finally(() => setLoading(false))
   }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
 
@@ -115,14 +117,20 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
         />
       )}
 
-      {!data && (
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Failed to load competitive data: {error}. Please try refreshing.
+        </div>
+      )}
+
+      {!data && !error && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
           No data yet — connect Snowflake and run a sync to populate this view.
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartCard title="Platform Distribution by Advertiser" height={280}>
+        <ChartCard title="Platform Distribution by Advertiser" height={280} info="Where each competitor places their ads (Meta, Google, LinkedIn). Spot platform gaps — if a rival ignores LinkedIn, that's your opportunity.">
           <div style={{ width: '100%', height: '100%' }}>
             {platformDistributionByAdvertiser.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -141,7 +149,7 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
           </div>
         </ChartCard>
 
-        <ChartCard title="Platform Strategy: Market vs Brand" height={280}>
+        <ChartCard title="Platform Strategy: Market vs Brand" height={280} info="Compare your platform mix to the market average. If the market is 60% Meta but you're 90%, you may be over-indexed on one channel.">
           <div style={{ width: '100%', height: '100%' }}>
             {platformStrategyComparison.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -162,7 +170,7 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-        <ChartCard title="New Ads by Advertiser" height={280}>
+        <ChartCard title="New Ads by Advertiser" height={280} info="Creative output over time per competitor. Spikes indicate campaign launches — use this to anticipate competitive moves.">
           <div style={{ width: '100%', height: '100%' }}>
             {newAdsByTopic.length === 0 ? <EmptyState label="No data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -181,7 +189,7 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
           </div>
         </ChartCard>
 
-        <ChartCard title="Performance Index Ranking" height={280}>
+        <ChartCard title="Performance Index Ranking" height={280} info="Average Performance Index per competitor. Higher PI means better ad effectiveness — see who's running the best-performing creatives in your market.">
           <div style={{ width: '100%', height: '100%' }}>
             {performanceIndexRanking.length === 0 ? <EmptyState label="No PI data" /> : (
               <ResponsiveContainer width="100%" height="100%">
@@ -205,7 +213,7 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
       <SubSection label="Topic Benchmark" />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartCard title="Topic Distribution" height={260}>
+        <ChartCard title="Topic Distribution" height={260} info="Which messaging themes dominate the market. Spot over-saturated topics to avoid, or under-served topics to own.">
           {topicDistribution.length === 0 ? <EmptyState label="No topic data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topicDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 80 }}>
@@ -223,7 +231,7 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
           )}
         </ChartCard>
 
-        <ChartCard title="Topic Share by Advertiser" height={260}>
+        <ChartCard title="Topic Share by Advertiser" height={260} info="How each competitor's messaging is distributed across topics. See who dominates which narrative and where you have room to differentiate.">
           {topicByAdvertiser.length === 0 ? <EmptyState label="No topic data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topicByAdvertiser} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 64 }}>
@@ -241,7 +249,7 @@ export function CompetitiveView({ workspaceId, connectionId, editMode = false, o
         </ChartCard>
       </div>
 
-      <ChartCard title="New Ads by Topic Over Time" height={260} className="mt-4">
+      <ChartCard title="New Ads by Topic Over Time" height={260} className="mt-4" info="Track how messaging themes evolve over time. Rising topics indicate market trends; use this to time your own topic pivots.">
         {newAdsByTopic.length === 0 ? <EmptyState label="No topic data" /> : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={newAdsByTopic} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>

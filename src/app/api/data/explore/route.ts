@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { loadAliasMap } from '@/lib/brand-aliases'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -137,7 +138,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const ads = (rows ?? []) as Row[]
+  const aliasMap = await loadAliasMap(workspaceId)
+  const ads = (rows ?? []).filter((r: Row) => {
+    const rawName = r.tracked_brands?.name ?? 'Unknown'
+    return aliasMap.resolve(rawName) !== null
+  }) as Row[]
 
   if (!ads.length) return NextResponse.json({ data: [] })
 
@@ -170,7 +175,10 @@ export async function POST(req: NextRequest) {
   // Apply optional brand/platform filters
   let filtered = ads
   if (filters?.brands?.length) {
-    filtered = filtered.filter(ad => filters.brands!.includes(ad.tracked_brands?.name ?? ''))
+    filtered = filtered.filter(ad => {
+      const resolved = aliasMap.resolve(ad.tracked_brands?.name ?? '') ?? ''
+      return filters.brands!.includes(resolved)
+    })
   }
   if (filters?.platforms?.length) {
     filtered = filtered.filter(ad => filters.platforms!.includes(ad.platform ?? ''))
@@ -184,7 +192,7 @@ export async function POST(req: NextRequest) {
     let keys: string[] = []
 
     if (dimension === 'brand') {
-      keys = [ad.tracked_brands?.name ?? 'Unknown']
+      keys = [aliasMap.resolve(ad.tracked_brands?.name ?? 'Unknown') ?? 'Unknown']
     } else if (dimension === 'platform') {
       keys = [ad.platform ?? 'Unknown']
     } else if (dimension === 'week') {

@@ -17,7 +17,7 @@ import { KpiCard } from '@/components/dashboard/_components/kpi-card'
 import { ChartCard } from '@/components/dashboard/_components/chart-card'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
-import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent } from '@/components/dashboard/_components/chart-theme'
+import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent, fmtCurrency } from '@/components/dashboard/_components/chart-theme'
 import {
   Table,
   TableBody,
@@ -60,6 +60,7 @@ interface Props {
 export function MovementView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
   const [data, setData] = useState<MovementData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [error, setError] = useState<string | null>(null)
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   // Re-render when brand colors change in Setup
@@ -79,12 +80,11 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
     const df = dateFrom ? `&from=${dateFrom}` : ''
     const dt = dateTo ? `&to=${dateTo}` : ''
     const dp = datePeriod ? `&period=${datePeriod}` : ''
+    setError(null)
     fetch(`/api/data/movement?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
-      .then(r => r.json())
-      .then((d: MovementData) => {
-        if (d.hasData) setData(d)
-      })
-      .catch(() => {})
+      .then(r => { if (!r.ok) throw new Error(`Server error (${r.status})`); return r.json() })
+      .then((d: MovementData) => { if (d.hasData) setData(d) })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load data'))
       .finally(() => setLoading(false))
   }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
 
@@ -100,13 +100,18 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
     </div>
   )
 
-  const newVsExisting   = data?.newVsExisting   ?? []
-  const newAdsTrendData = data?.newAdsTrend      ?? []
-  const tableData       = data?.table            ?? []
-  const performanceTrend = data?.performanceTrend ?? []
+  const newVsExisting        = data?.newVsExisting        ?? []
+  const newAdsTrendData      = data?.newAdsTrend           ?? []
+  const weeklySpendMovement  = data?.weeklySpendMovement   ?? []
+  const tableData            = data?.table                 ?? []
+  const performanceTrend     = data?.performanceTrend      ?? []
 
   const brandKeys = newAdsTrendData.length > 0
     ? Object.keys(newAdsTrendData[0]).filter(k => k !== 'week')
+    : []
+
+  const spendBrandKeys = weeklySpendMovement.length > 0
+    ? Object.keys(weeklySpendMovement[0]).filter(k => k !== 'week')
     : []
 
   const kpiMetrics = data?.kpis
@@ -146,7 +151,13 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
         />
       )}
 
-      {!data && (
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Failed to load movement data: {error}. Please try refreshing.
+        </div>
+      )}
+
+      {!data && !error && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
           No data yet — connect Snowflake and run a sync to populate this view.
         </div>
@@ -164,6 +175,26 @@ export function MovementView({ workspaceId, connectionId, editMode = false, onEd
           />
         ))}
       </div>
+
+      {/* Weekly Spend Movement */}
+      <ChartCard title="Weekly Est. Spend Movement" height={260} className="mt-6" info="Estimated weekly ad spend per competitor. Spot when rivals ramp up budgets so you can respond quickly or reallocate your own spend.">
+        <div style={{ width: '100%', height: '100%' }}>
+          {weeklySpendMovement.length === 0 ? <EmptyState label="No spend data" /> : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklySpendMovement} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtCurrency} />} />
+                <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                {spendBrandKeys.map((bKey, i) => (
+                  <Bar key={bKey} dataKey={bKey} name={bKey.charAt(0).toUpperCase() + bKey.slice(1)} stackId="a" fill={getBrandColor(bKey, i)} radius={i === spendBrandKeys.length - 1 ? [3, 3, 0, 0] : undefined} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </ChartCard>
 
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">

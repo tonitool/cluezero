@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { loadAliasMap } from '@/lib/brand-aliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,9 +82,14 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // ── Shape data ───────────────────────────────────────────────────────────────
+  const aliasMap = await loadAliasMap(workspaceId)
   type RawRow = typeof rows extends (infer T)[] | null ? T : never
 
-  const creatives = (rows ?? []).map((row: RawRow) => {
+  const creatives = (rows ?? []).filter((row: RawRow) => {
+    const rawBrand = Array.isArray(row.tracked_brands) ? row.tracked_brands[0] : row.tracked_brands
+    const rawName = (rawBrand as { name?: string } | null)?.name ?? 'Unknown'
+    return aliasMap.resolve(rawName) !== null
+  }).map((row: RawRow) => {
     const brand = Array.isArray(row.tracked_brands) ? row.tracked_brands[0] : row.tracked_brands
     const enrichment = Array.isArray(row.ad_enrichments) ? row.ad_enrichments[0] : row.ad_enrichments
     const spends = (Array.isArray(row.ad_spend_estimates) ? row.ad_spend_estimates : row.ad_spend_estimates ? [row.ad_spend_estimates] : []) as Array<{ est_spend_eur: number | null; est_impressions: number | null; est_reach: number | null; week_start: string }>
@@ -107,7 +113,7 @@ export async function GET(req: NextRequest) {
       isActive:         row.is_active,
       brand: {
         id:    (brand as { id?: string } | null)?.id ?? null,
-        name:  (brand as { name?: string } | null)?.name ?? 'Unknown',
+        name:  aliasMap.resolve((brand as { name?: string } | null)?.name ?? 'Unknown') ?? 'Unknown',
         color: (brand as { color?: string } | null)?.color ?? null,
       },
       funnelStage:    (enrichment as { funnel_stage?: string } | null)?.funnel_stage ?? null,

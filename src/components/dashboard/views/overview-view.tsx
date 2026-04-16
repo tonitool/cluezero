@@ -67,6 +67,7 @@ const TAB = 'overview'
 export function OverviewView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
   const [data, setData]     = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [error, setError]   = useState<string | null>(null)
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   useBrandColorTick()
@@ -87,10 +88,11 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
     const df = dateFrom ? `&from=${dateFrom}` : ''
     const dt = dateTo ? `&to=${dateTo}` : ''
     const dp = datePeriod ? `&period=${datePeriod}` : ''
+    setError(null)
     fetch(`/api/data/overview?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`Server error (${r.status})`); return r.json() })
       .then(d => { if (d.hasData) setData(d) })
-      .catch(() => {})
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load data'))
       .finally(() => setLoading(false))
   }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
 
@@ -174,7 +176,13 @@ export function OverviewView({ workspaceId, connectionId, editMode = false, onEd
         />
       )}
 
-      {!data && (
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Failed to load overview data: {error}. Please try refreshing.
+        </div>
+      )}
+
+      {!data && !error && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
           No data yet — connect Snowflake and run a sync to populate this view.
         </div>

@@ -60,6 +60,7 @@ type PerfData = Record<string, any>
 export function PerformanceView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
   const [data, setData] = useState<PerfData | null>(null)
   const [loading, setLoading] = useState(!!workspaceId)
+  const [error, setError] = useState<string | null>(null)
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
   // Re-render when brand colors change in Setup
@@ -79,10 +80,11 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
     const df = dateFrom ? `&from=${dateFrom}` : ''
     const dt = dateTo ? `&to=${dateTo}` : ''
     const dp = datePeriod ? `&period=${datePeriod}` : ''
+    setError(null)
     fetch(`/api/data/performance?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`Server error (${r.status})`); return r.json() })
       .then(d => { if (d.hasData) setData(d) })
-      .catch(() => {})
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load data'))
       .finally(() => setLoading(false))
   }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
 
@@ -121,14 +123,20 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
         />
       )}
 
-      {!data && (
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Failed to load performance data: {error}. Please try refreshing.
+        </div>
+      )}
+
+      {!data && !error && (
         <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
           No data yet — connect Snowflake and run a sync to populate this view.
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartCard title="Funnel Stage Distribution" height={280}>
+        <ChartCard title="Funnel Stage Distribution" height={280} info="How ad spend is distributed across funnel stages (See/Think/Do/Care). Use this to check if your strategy is top-heavy or well-balanced.">
           {funnelDistribution.length === 0 ? <EmptyState label="No funnel data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnelDistribution} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 52 }}>
@@ -146,7 +154,7 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
           )}
         </ChartCard>
 
-        <ChartCard title="Funnel Mix by Advertiser" height={280}>
+        <ChartCard title="Funnel Mix by Advertiser" height={280} info="Compare funnel strategies across competitors. See who invests in awareness (See) vs conversion (Do) — spot gaps you can exploit.">
           {funnelByAdvertiser.length === 0 ? <EmptyState label="No funnel data" /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnelByAdvertiser} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 64 }}>
@@ -165,7 +173,7 @@ export function PerformanceView({ workspaceId, connectionId, editMode = false, o
         </ChartCard>
       </div>
 
-      <ChartCard title="New Ads by Funnel Stage Over Time" height={260} className="mt-4">
+      <ChartCard title="New Ads by Funnel Stage Over Time" height={260} className="mt-4" info="Track when competitors launch new creatives at each funnel stage. Spikes in 'Do' ads may signal a sales push; spikes in 'See' ads indicate brand campaigns.">
         {newAdsByFunnel.length === 0 ? <EmptyState label="No funnel data" /> : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={newAdsByFunnel} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>
