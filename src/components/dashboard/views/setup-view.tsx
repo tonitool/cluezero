@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Check, Loader2, AlertCircle, Sparkles, X, Trash2, Database, Shuffle, GitMerge } from 'lucide-react'
+import { Plus, Check, Loader2, AlertCircle, Sparkles, X, Trash2, Database, Shuffle, GitMerge, Settings2 } from 'lucide-react'
 import { SectionHeader } from '@/components/dashboard/_components/section-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,7 @@ import {
 import { cn } from '@/lib/utils'
 import { setBrandColors as cacheBrandColors, RANDOM_PALETTE } from '@/lib/brand-colors'
 import { BrandOrchestrator } from '@/components/dashboard/_components/brand-orchestrator'
+import { ValueTransformsEditor } from '@/components/dashboard/_components/value-transforms-editor'
 
 const PLATFORM_COLORS: Record<string, string> = {
   Meta:     '#1877F2',
@@ -109,6 +110,55 @@ interface Props {
   workspaceSlug: string
   ownBrand?: string
 }
+
+// ── Data Orchestrator (tabs: Brand Mapping, Value Transforms) ────────────────
+
+type OrchestratorTab = 'brands' | 'transforms'
+
+function DataOrchestratorSection({ workspaceId }: { workspaceId: string }) {
+  const [tab, setTab] = useState<OrchestratorTab>('brands')
+
+  const tabs: { id: OrchestratorTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'brands',     label: 'Brand Mapping',     icon: <GitMerge className="size-3.5" /> },
+    { id: 'transforms', label: 'Value Transforms',  icon: <Settings2 className="size-3.5" /> },
+  ]
+
+  return (
+    <div className="bg-white rounded-lg border border-border shadow-sm p-5 mt-4">
+      <div className="flex items-center gap-2 mb-1">
+        <GitMerge className="size-4 text-indigo-500" />
+        <p className="text-sm font-semibold">Data Orchestrator</p>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Control how your Snowflake data is processed and displayed — map brands, remap values, format numbers, and rename fields.
+      </p>
+
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 p-1 bg-zinc-100 rounded-lg w-fit mb-5">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200',
+              tab === t.id
+                ? 'bg-white text-zinc-900 shadow-sm'
+                : 'text-zinc-500 hover:text-zinc-700',
+            )}
+          >
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'brands' && <BrandOrchestrator workspaceId={workspaceId} />}
+      {tab === 'transforms' && <ValueTransformsEditor workspaceId={workspaceId} />}
+    </div>
+  )
+}
+
+// ─── Main Setup View ────────────────────────────────────────────────────────
 
 export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand: initialOwnBrand = '' }: Props) {
   const router = useRouter()
@@ -862,16 +912,7 @@ export function SetupView({ workspaceId, workspaceName, workspaceSlug, ownBrand:
       </div>
 
       {/* ── Data Orchestrator ── */}
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5 mt-4">
-        <div className="flex items-center gap-2 mb-1">
-          <GitMerge className="size-4 text-indigo-500" />
-          <p className="text-sm font-semibold">Data Orchestrator</p>
-        </div>
-        <p className="text-xs text-muted-foreground mb-5">
-          Clean up brand names from your data sources. Merge duplicates, fix typos, and exclude old or irrelevant brands. Changes apply across all dashboards and reports.
-        </p>
-        <BrandOrchestrator workspaceId={workspaceId} />
-      </div>
+      <DataOrchestratorSection workspaceId={workspaceId} />
     </div>
   )
 }

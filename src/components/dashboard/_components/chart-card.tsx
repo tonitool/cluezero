@@ -1,6 +1,9 @@
+'use client'
+
 import { ReactNode, useState, useRef, useEffect } from 'react'
 import { Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { motion } from 'motion/react'
 
 interface ChartCardProps {
   title: string
@@ -26,7 +29,12 @@ export function ChartCard({ title, description, children, className, height = 30
   }, [showInfo])
 
   return (
-    <div className={cn('bg-white rounded-xl border border-border shadow-sm flex flex-col transition-shadow hover:shadow-md', className)}>
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+      className={cn('bg-white rounded-xl border border-border shadow-sm flex flex-col transition-shadow hover:shadow-md', className)}
+    >
       <div className="flex items-start justify-between px-5 pt-5 pb-3 gap-4">
         <div className="flex items-start gap-1.5">
           <div>
@@ -54,6 +62,6 @@ export function ChartCard({ title, description, children, className, height = 30
       <div className="px-5 pb-5" style={{ height }}>
         {children}
       </div>
-    </div>
+    </motion.div>
   )
 }

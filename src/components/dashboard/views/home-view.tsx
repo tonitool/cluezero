@@ -24,6 +24,7 @@ import {
   YAxis,
 } from 'recharts'
 import { KpiCard } from '@/components/dashboard/_components/kpi-card'
+import { ViewTransition } from '@/components/dashboard/_components/view-transition'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -236,6 +237,7 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
   }
 
   return (
+    <ViewTransition>
     <div className="space-y-6">
 
       {/* ── Welcome bar ── */}
@@ -567,5 +569,6 @@ export function HomeView({ workspaceName, workspaceId, ownBrand = '', onNavigate
       </div>
 
     </div>
+    </ViewTransition>
   )
 }
