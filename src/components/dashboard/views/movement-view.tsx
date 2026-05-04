@@ -1,0 +1,340 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
+import { KpiCard } from '@/components/dashboard/_components/kpi-card'
+import { ChartCard } from '@/components/dashboard/_components/chart-card'
+import { SectionHeader } from '@/components/dashboard/_components/section-header'
+import { getBrandColor, BRAND_COLORS_EVENT } from '@/lib/brand-colors'
+import { ChartTooltip, TICK, GRID, GRID_H, ACTIVE_DOT, fmtPercent, fmtCurrency } from '@/components/dashboard/_components/chart-theme'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { EditModeBar } from '@/components/dashboard/widget-system/edit-mode-bar'
+import { AddWidgetSheet } from '@/components/dashboard/widget-system/add-widget-sheet'
+import { SqlWidgetCard } from '@/components/dashboard/widget-system/sql-widget-card'
+import { useWidgetConfigs } from '@/components/dashboard/widget-system/use-widget-configs'
+import type { WidgetConfig, ChartType } from '@/components/dashboard/widget-system/types'
+
+function EmptyState({ label }: { label: string }) {
+  return <div className="flex items-center justify-center h-full text-xs text-muted-foreground">{label}</div>
+}
+
+interface MovementData {
+  hasData: boolean
+  kpis: { totalWeeklySpend: number; totalWeeklyReach: number }
+  weeklySpendMovement: Record<string, unknown>[]
+  newAdsTrend: Record<string, unknown>[]
+  newVsExisting: { advertiser: string; newAdsPct: number; existingAdsPct: number }[]
+  table: { advertiser: string; platform: string; totalAds: number; newAds: number; weeklyReach: number; weeklySpend: number; avgPi: number | null }[]
+  performanceTrend: { week: string; ownBrand: number | null; market: number | null }[]
+  ownBrandLabel?: string
+}
+
+interface Props {
+  workspaceId?: string
+  connectionId?: string
+  editMode?: boolean
+  onEditModeChange?: (v: boolean) => void
+  dateFrom?: string
+  dateTo?: string
+  datePeriod?: string
+}
+
+export function MovementView({ workspaceId, connectionId, editMode = false, onEditModeChange, dateFrom, dateTo, datePeriod }: Props) {
+  const [data, setData] = useState<MovementData | null>(null)
+  const [loading, setLoading] = useState(!!workspaceId)
+  const [error, setError] = useState<string | null>(null)
+  const [showAddSheet, setShowAddSheet] = useState(false)
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null)
+  // Re-render when brand colors change in Setup
+  const [, setColorTick] = useState(0)
+  useEffect(() => {
+    const h = () => setColorTick(t => t + 1)
+    window.addEventListener(BRAND_COLORS_EVENT, h)
+    return () => window.removeEventListener(BRAND_COLORS_EVENT, h)
+  }, [])
+
+  const wc = useWidgetConfigs(workspaceId, 'movement')
+
+  useEffect(() => {
+    if (!workspaceId) return
+    setLoading(true)
+    const src = connectionId ? `&connectionId=${connectionId}` : ''
+    const df = dateFrom ? `&from=${dateFrom}` : ''
+    const dt = dateTo ? `&to=${dateTo}` : ''
+    const dp = datePeriod ? `&period=${datePeriod}` : ''
+    setError(null)
+    fetch(`/api/data/movement?workspaceId=${workspaceId}${src}${df}${dt}${dp}`)
+      .then(r => { if (!r.ok) throw new Error(`Server error (${r.status})`); return r.json() })
+      .then((d: MovementData) => { if (d.hasData) setData(d) })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load data'))
+      .finally(() => setLoading(false))
+  }, [workspaceId, connectionId, dateFrom, dateTo, datePeriod])
+
+  if (loading) return (
+    <div>
+      <SectionHeader title="Weekly Movement" description="New vs existing ads, platform momentum, and performance index trends" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[1,2,3,4].map(i => <div key={i} className="h-24 bg-zinc-100 rounded-lg animate-pulse" />)}
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">
+        {[1,2].map(i => <div key={i} className="h-72 bg-zinc-100 rounded-lg animate-pulse" />)}
+      </div>
+    </div>
+  )
+
+  const newVsExisting        = data?.newVsExisting        ?? []
+  const newAdsTrendData      = data?.newAdsTrend           ?? []
+  const weeklySpendMovement  = data?.weeklySpendMovement   ?? []
+  const tableData            = data?.table                 ?? []
+  const performanceTrend     = data?.performanceTrend      ?? []
+
+  const brandKeys = newAdsTrendData.length > 0
+    ? Object.keys(newAdsTrendData[0]).filter(k => k !== 'week')
+    : []
+
+  const spendBrandKeys = weeklySpendMovement.length > 0
+    ? Object.keys(weeklySpendMovement[0]).filter(k => k !== 'week')
+    : []
+
+  const kpiMetrics = data?.kpis
+    ? [
+        {
+          label: 'Total market weekly est. reach',
+          value: data.kpis.totalWeeklyReach.toLocaleString(),
+          subtitle: 'unique profiles',
+          info: 'Estimated total audience reached by all tracked ads in the selected period.',
+        },
+        {
+          label: 'Total market weekly est. spend',
+          value: `€${data.kpis.totalWeeklySpend.toLocaleString()}`,
+          subtitle: 'across active advertisers',
+          info: 'Combined estimated ad spend across all tracked competitors.',
+        },
+      ]
+    : []
+
+  const sqlWidgets = wc.configs.filter(c => c.type === 'sql')
+
+  return (
+    <div>
+      <SectionHeader
+        title="Weekly Movement"
+        description="New vs existing ads, platform momentum, and performance index trends"
+      />
+
+      {editMode && (
+        <EditModeBar
+          tab="movement"
+          configs={wc.configs}
+          onAddWidget={() => { setEditingWidget(null); setShowAddSheet(true) }}
+          onDone={() => onEditModeChange?.(false)}
+          onCancel={() => onEditModeChange?.(false)}
+          saving={wc.saving}
+        />
+      )}
+
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Failed to load movement data: {error}. Please try refreshing.
+        </div>
+      )}
+
+      {!data && !error && (
+        <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          No data yet — connect Snowflake and run a sync to populate this view.
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {kpiMetrics.map((metric) => (
+          <KpiCard
+            key={metric.label}
+            label={metric.label}
+            value={metric.value}
+            subtitle={metric.subtitle}
+            info={metric.info}
+          />
+        ))}
+      </div>
+
+      {/* Weekly Spend Movement */}
+      <ChartCard title="Weekly Est. Spend Movement" height={260} className="mt-6" info="Estimated weekly ad spend per competitor. Spot when rivals ramp up budgets so you can respond quickly or reallocate your own spend.">
+        <div style={{ width: '100%', height: '100%' }}>
+          {weeklySpendMovement.length === 0 ? <EmptyState label="No spend data" /> : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklySpendMovement} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                <YAxis tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtCurrency} />} />
+                <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                {spendBrandKeys.map((bKey, i) => (
+                  <Bar key={bKey} dataKey={bKey} name={bKey.charAt(0).toUpperCase() + bKey.slice(1)} stackId="a" fill={getBrandColor(bKey, i)} radius={i === spendBrandKeys.length - 1 ? [3, 3, 0, 0] : undefined} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </ChartCard>
+
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">
+        <ChartCard title="New vs Existing Ads" height={280} info="How much each competitor is refreshing their creative. High new-ad % signals an active campaign push or creative testing phase.">
+          <div style={{ width: '100%', height: '100%' }}>
+            {newVsExisting.length === 0 ? <EmptyState label="No data" /> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={newVsExisting} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                  <CartesianGrid {...GRID_H} />
+                  <XAxis type="number" tick={TICK} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                  <YAxis type="category" dataKey="advertiser" tick={TICK} tickLine={false} axisLine={false} width={64} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} fmt={fmtPercent} />} />
+                  <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Bar dataKey="newAdsPct" name="New" stackId="a" fill="#6366F1" />
+                  <Bar dataKey="existingAdsPct" name="Existing" stackId="a" fill="#E2E8F0" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </ChartCard>
+
+        <ChartCard title="New Ads Trend" height={280} info="Volume of newly launched ads per competitor over time. Spikes reveal campaign launches.">
+          <div style={{ width: '100%', height: '100%' }}>
+            {newAdsTrendData.length === 0 ? <EmptyState label="No data" /> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={newAdsTrendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  {brandKeys.map((key, i) => (
+                    <Line
+                      key={key}
+                      type="monotone"
+                      dataKey={key}
+                      name={key.charAt(0).toUpperCase() + key.slice(1)}
+                      stroke={getBrandColor(key, i)}
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={ACTIVE_DOT}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </ChartCard>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+        <ChartCard title="Performance Index Trend" height={280} info="Performance Index (0–100) measures ad effectiveness. Above 70 = high performer. Compare your brand vs market average.">
+          <div style={{ width: '100%', height: '100%' }}>
+            {performanceTrend.length === 0 ? <EmptyState label="No PI data" /> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={performanceTrend} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid {...GRID} />
+                  <XAxis dataKey="week" tick={TICK} tickLine={false} axisLine={false} />
+                  <YAxis tick={TICK} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
+                  <Tooltip content={(p) => <ChartTooltip {...p} />} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Line type="monotone" dataKey="ownBrand" name={data?.ownBrandLabel ?? 'Brand'} stroke={getBrandColor(data?.ownBrandLabel ?? 'Brand', 0)} strokeWidth={2.5} dot={false} activeDot={ACTIVE_DOT} />
+                  <Line type="monotone" dataKey="market" name="Market avg." stroke="#94A3B8" strokeWidth={2} dot={false} strokeDasharray="4 3" activeDot={ACTIVE_DOT} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </ChartCard>
+
+        <div className="bg-white rounded-xl border border-border shadow-sm p-5 transition-shadow hover:shadow-md">
+          <p className="text-sm font-semibold leading-tight mb-4">Weekly Movement Details</p>
+          {tableData.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No data available.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Advertiser</TableHead>
+                  <TableHead className="text-xs">Platform</TableHead>
+                  <TableHead className="text-xs text-right">Total Ads</TableHead>
+                  <TableHead className="text-xs text-right">New Ads</TableHead>
+                  <TableHead className="text-xs text-right">Est. Spend</TableHead>
+                  <TableHead className="text-xs text-right">PI Score</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tableData.map((row) => (
+                  <TableRow key={`${row.advertiser}-${row.platform}`}>
+                    <TableCell className="text-xs font-medium">{row.advertiser}</TableCell>
+                    <TableCell className="text-xs">{row.platform}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">{row.totalAds}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">{row.newAds}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">€{row.weeklySpend.toLocaleString()}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">{row.avgPi ?? '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </div>
+
+      {/* SQL widgets inline */}
+      {sqlWidgets.length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+          {sqlWidgets.map(w => (
+            <div key={w.id} className={w.colSpan === 2 ? 'col-span-2' : 'col-span-1'}>
+              <SqlWidgetCard
+                config={w}
+                workspaceId={workspaceId ?? ''}
+                editMode={editMode}
+                onEdit={() => { setEditingWidget(w); setShowAddSheet(true) }}
+                onDelete={() => wc.deleteWidget(w.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAddSheet && workspaceId && (
+        <AddWidgetSheet
+          workspaceId={workspaceId}
+          tab="movement"
+          editingWidget={editingWidget}
+          onSave={async (params) => {
+            if (editingWidget) {
+              await wc.updateWidget(editingWidget.id, {
+                title: params.title,
+                sqlQuery: params.sqlQuery,
+                chartType: params.chartType as ChartType,
+                colSpan: params.colSpan,
+              })
+            } else {
+              await wc.addSqlWidget(params)
+            }
+          }}
+          onClose={() => { setShowAddSheet(false); setEditingWidget(null) }}
+        />
+      )}
+    </div>
+  )
+}

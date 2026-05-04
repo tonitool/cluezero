@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/ads/ingest",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/sync",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/agent-watch",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}
