@@ -10,6 +10,8 @@
 import 'server-only'
 import { executeAction } from '@/lib/composio'
 
+const SF_VERSION = '20260407_00'
+
 export type SnowflakeMapping = {
   database: string
   schema: string
@@ -33,12 +35,12 @@ export type SnowflakeMapping = {
 type SnowflakeResult = { data?: unknown; response?: string; error?: string }
 
 export async function listDatabases(workspaceId: string): Promise<string[]> {
-  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {}) as SnowflakeResult
+  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {}, SF_VERSION) as SnowflakeResult
   return parseNameList(result, ['name', 'DATABASE_NAME', 'database_name'])
 }
 
 export async function listSchemas(workspaceId: string, database: string): Promise<string[]> {
-  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database }) as SnowflakeResult
+  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database }, SF_VERSION) as SnowflakeResult
   return parseNameList(result, ['name', 'SCHEMA_NAME', 'schema_name'])
 }
 
@@ -46,7 +48,7 @@ export async function listTables(workspaceId: string, database: string, schema: 
   const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', {
     database,
     schema_name: schema,
-  }) as SnowflakeResult
+  }, SF_VERSION) as SnowflakeResult
   return parseNameList(result, ['name', 'TABLE_NAME', 'table_name'])
 }
 
@@ -68,7 +70,7 @@ export async function testSnowflakeConnectionComposio(
   workspaceId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
+    await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {}, SF_VERSION)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Connection test failed' }
@@ -89,7 +91,7 @@ export async function fetchTableColumnsComposio(
       database,
       schema_name: schema,
       table_name: table,
-    }) as SnowflakeResult
+    }, SF_VERSION) as SnowflakeResult
 
     if (result?.error) return { ok: false, error: result.error }
 
@@ -116,7 +118,7 @@ export async function sampleTableComposio(
       query: `SELECT * FROM "${mapping.table}" LIMIT 5`,
       database: mapping.database,
       schema_name: mapping.schema,
-    }) as SnowflakeResult
+    }, SF_VERSION) as SnowflakeResult
 
     if (result?.error) return { ok: false, error: result.error }
 
@@ -161,7 +163,7 @@ export async function fetchSnowflakeRowsComposio(
       query: sql,
       database: mapping.database,
       schema_name: mapping.schema,
-    }) as SnowflakeResult
+    }, SF_VERSION) as SnowflakeResult
 
     if (result?.error) return { ok: false, error: result.error }
 

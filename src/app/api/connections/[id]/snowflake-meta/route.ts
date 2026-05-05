@@ -14,6 +14,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { executeAction } from '@/lib/composio'
 
+const SF_VERSION = '20260407_00'
+
 /** Extract a list of name strings from any Composio action response shape. */
 function extractNames(raw: unknown, keys: string[]): string[] {
   // raw may be: string (JSON), array, or object with .data / .response / .rows
@@ -93,19 +95,19 @@ export async function GET(
 
   try {
     if (type === 'databases') {
-      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {}, SF_VERSION)
       console.log('[snowflake-meta] SHOW_DATABASES raw:', JSON.stringify(raw).slice(0, 500))
       const items = extractNames(raw, ['name', 'DATABASE_NAME', 'database_name'])
       return NextResponse.json({ items })
     }
     if (type === 'schemas' && database) {
-      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database })
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database }, SF_VERSION)
       console.log('[snowflake-meta] SHOW_SCHEMAS raw:', JSON.stringify(raw).slice(0, 500))
       const items = extractNames(raw, ['name', 'SCHEMA_NAME', 'schema_name'])
       return NextResponse.json({ items })
     }
     if (type === 'tables' && database && schema) {
-      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', { database, schema_name: schema })
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', { database, schema_name: schema }, SF_VERSION)
       console.log('[snowflake-meta] SHOW_TABLES raw:', JSON.stringify(raw).slice(0, 500))
       const items = extractNames(raw, ['name', 'TABLE_NAME', 'table_name'])
       return NextResponse.json({ items })
@@ -115,7 +117,7 @@ export async function GET(
         database,
         schema_name: schema,
         table_name: table,
-      })
+      }, SF_VERSION)
       console.log('[snowflake-meta] DESCRIBE_TABLE raw:', JSON.stringify(raw).slice(0, 500))
       const items = extractNames(raw, ['name', 'COLUMN_NAME', 'column_name'])
       return NextResponse.json({ items })
