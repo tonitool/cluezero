@@ -3,6 +3,7 @@ import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { syncConnection } from '@/lib/sync-connection'
+import { discoverSnowflakeMapping } from '@/lib/snowflake-agent'
 
 // Allow up to 5 minutes for the background sync on Vercel Pro
 export const maxDuration = 300
@@ -66,6 +67,59 @@ export async function POST(req: NextRequest) {
   // The user can navigate away; status is polled via /api/connections/status.
   after(async () => {
     try {
+      // If no mapping config yet, run the discovery agent first
+      const { data: fresh } = await db
+        .from('connections')
+        .select('config')
+        .eq('id', connectionId)
+        .single()
+
+      const cfg = (fresh?.config ?? {}) as Record<string, string>
+      const hasMapping = cfg.database && cfg.tableName && cfg.colBrand && cfg.colDate
+
+      if (!hasMapping) {
+        console.log('[sync] No mapping config — running discovery agent')
+        await db.from('connections').update({ sync_error: 'Discovering schema…' }).eq('id', connectionId)
+
+        const { ok, mapping, error, log } = await discoverSnowflakeMapping(workspaceId)
+        console.log('[sync] Discovery log:', log)
+
+        if (!ok || !mapping) {
+          await db.from('connections').update({
+            sync_status: 'error',
+            sync_error: `Discovery failed: ${error}`,
+            updated_at: new Date().toISOString(),
+          }).eq('id', connectionId)
+          return
+        }
+
+        // Save the discovered mapping into connection config
+        await db.from('connections').update({
+          config: {
+            database:    mapping.database,
+            schemaName:  mapping.schema,
+            tableName:   mapping.table,
+            colBrand:    mapping.colBrand,
+            colDate:     mapping.colDate,
+            colAdId:        mapping.colAdId        ?? '',
+            colHeadline:    mapping.colHeadline    ?? '',
+            colSpend:       mapping.colSpend       ?? '',
+            colImpressions: mapping.colImpressions ?? '',
+            colReach:       mapping.colReach       ?? '',
+            colPi:          mapping.colPi          ?? '',
+            colFunnel:      mapping.colFunnel      ?? '',
+            colTopic:       mapping.colTopic       ?? '',
+            colPlatform:    mapping.colPlatform    ?? '',
+            colThumbnail:   mapping.colThumbnail   ?? '',
+            colIsActive:    mapping.colIsActive    ?? '',
+          },
+          sync_error: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', connectionId)
+
+        console.log(`[sync] Discovered: ${mapping.database}.${mapping.schema}.${mapping.table}`)
+      }
+
       await syncConnection(connectionId, workspaceId)
       // syncConnection already writes final status to the DB, so we don't
       // need to duplicate the update here.

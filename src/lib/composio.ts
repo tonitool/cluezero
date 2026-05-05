@@ -22,12 +22,20 @@ let _client: Composio | null = null
 export function getComposioClient(): Composio {
   const key = process.env.COMPOSIO_API_KEY
   if (!key) throw new Error('COMPOSIO_API_KEY not configured')
-  if (!_client) _client = new Composio({ apiKey: key })
+  if (!_client) {
+    _client = new Composio({
+      apiKey: key,
+      // Pin toolkit versions so tools.execute never gets "latest" and throws
+      // ComposioToolVersionRequiredError. Add new entries when connecting new toolkits.
+      toolkitVersions: {
+        snowflake_basic: '20260407_00',
+      },
+    })
+  }
   return _client
 }
 
 // ─── Auth config IDs (from Composio dashboard → Auth Configs) ────────────────
-// These correspond to V1 "integration IDs" — same values, new name in V3.
 
 export const INTEGRATION_IDS: Record<string, string | undefined> = {
   snowflake: process.env.COMPOSIO_INTEGRATION_SNOWFLAKE,
@@ -54,9 +62,6 @@ export async function initiateConnection(
   const authConfigId = INTEGRATION_IDS[appName]
   if (!authConfigId) throw new Error(`No auth config ID configured for ${appName}`)
 
-  // ── All apps (OAuth + BASIC) — use Composio-hosted flow ────────────────────
-  // link() creates a Composio Connect Link (platform.composio.dev/link/…) that
-  // hosts the credential form for BASIC auth apps and the OAuth consent for OAuth apps.
   const client = getComposioClient()
   const request = await client.connectedAccounts.link(workspaceId, authConfigId, {
     callbackUrl: redirectUri,
@@ -70,7 +75,7 @@ export async function initiateConnection(
 }
 
 /**
- * Poll a specific connected account nanoid for its current status.
+ * Poll a specific connected account for its current status.
  */
 export async function getConnectionStatus(
   composioConnectionId: string,
@@ -87,7 +92,6 @@ export async function getConnectionStatus(
 
 /**
  * Execute a Composio action using this workspace's connection.
- * E.g. executeAction('workspace-123', 'SNOWFLAKE_EXECUTE_SQL', { statement: 'SELECT ...' })
  */
 export async function executeAction(
   workspaceId: string,
