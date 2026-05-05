@@ -15,8 +15,6 @@ import { Composio } from '@composio/core'
 export type { AppInfo } from './connectors'
 export { SUPPORTED_CONNECTORS } from './connectors'
 
-const COMPOSIO_BASE = 'https://backend.composio.dev'
-
 // ─── Client singleton ─────────────────────────────────────────────────────────
 
 let _client: Composio | null = null
@@ -26,12 +24,6 @@ export function getComposioClient(): Composio {
   if (!key) throw new Error('COMPOSIO_API_KEY not configured')
   if (!_client) _client = new Composio({ apiKey: key })
   return _client
-}
-
-function apiKey() {
-  const key = process.env.COMPOSIO_API_KEY
-  if (!key) throw new Error('COMPOSIO_API_KEY not configured')
-  return key
 }
 
 // ─── Auth config IDs (from Composio dashboard → Auth Configs) ────────────────
@@ -45,22 +37,6 @@ export const INTEGRATION_IDS: Record<string, string | undefined> = {
   clickup: process.env.COMPOSIO_INTEGRATION_CLICKUP,
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Safely extract a string message from whatever the API returns as error/message. */
-function extractError(json: Record<string, unknown>, status: number): string {
-  for (const key of ['error', 'message', 'detail', 'msg']) {
-    const v = json[key]
-    if (typeof v === 'string' && v) return v
-    if (v && typeof v === 'object') {
-      const nested = (v as Record<string, unknown>).message
-      if (typeof nested === 'string' && nested) return nested
-      return JSON.stringify(v)
-    }
-  }
-  return `Composio error ${status}`
-}
-
 // ─── Connection management ────────────────────────────────────────────────────
 
 export interface InitiateConnectionResult {
@@ -70,13 +46,12 @@ export interface InitiateConnectionResult {
 }
 
 /**
- * Create a connection for a given app using the Composio V3 API.
+ * Create a connection for a given app via the Composio SDK.
+ * Delegates to sdk.connectedAccounts.initiate() so the SDK handles the
+ * correct V3 request body format for both OAuth and Basic Auth apps.
  *
- * OAuth apps  → POST /api/v3/connected_accounts/link
- *               Returns a redirectUrl the user must visit to complete auth.
- *
- * Basic auth  → POST /api/v3/connected_accounts
- *               Credentials are submitted directly; connection is active immediately.
+ * OAuth apps  → returns a redirectUrl the user must visit to complete auth.
+ * Basic auth  → credentials submitted in params; connection is active immediately.
  */
 export async function initiateConnection(
   workspaceId: string,
@@ -85,59 +60,21 @@ export async function initiateConnection(
   redirectUri?: string,
 ): Promise<InitiateConnectionResult> {
   const authConfigId = INTEGRATION_IDS[appName]
-  const isBasicAuth = appName === 'snowflake'
+  if (!authConfigId) throw new Error(`No auth config ID configured for ${appName}`)
 
-  if (isBasicAuth) {
-    // Basic Auth: POST /api/v3/connected_accounts — credentials submitted directly
-    const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts`, {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        auth_config: { id: authConfigId },
-        connection: { user_id: workspaceId, data: params },
-      }),
-    })
-
-    const json = await res.json() as Record<string, unknown>
-
-    if (!res.ok || json['error']) {
-      throw new Error(extractError(json, res.status))
-    }
-
-    return {
-      connectionId: String(json['id'] ?? ''),
-      redirectUrl: null,
-      status: 'active',
-    }
-  }
-
-  // OAuth: POST /api/v3/connected_accounts/link — returns a redirect URL
-  const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts/link`, {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      auth_config_id: authConfigId,
-      user_id: workspaceId,
-      ...(redirectUri ? { callback_url: redirectUri } : {}),
-    }),
+  const client = getComposioClient()
+  const request = await client.connectedAccounts.initiate(workspaceId, authConfigId, {
+    callbackUrl: redirectUri,
+    ...(Object.keys(params).length > 0 ? { data: params } : {}),
   })
 
-  const oauthJson = await res.json() as Record<string, unknown>
-
-  if (!res.ok || oauthJson['error']) {
-    throw new Error(extractError(oauthJson, res.status))
-  }
+  const raw = (request.status ?? '').toUpperCase()
+  const status = raw === 'ACTIVE' ? 'active' : raw === 'INITIATED' ? 'pending' : raw.toLowerCase() || 'pending'
 
   return {
-    connectionId: String(oauthJson['connected_account_id'] ?? ''),
-    redirectUrl: typeof oauthJson['redirect_url'] === 'string' ? oauthJson['redirect_url'] : null,
-    status: 'pending',
+    connectionId: request.id ?? '',
+    redirectUrl: request.redirectUrl ?? null,
+    status,
   }
 }
 
@@ -147,14 +84,13 @@ export async function initiateConnection(
 export async function getConnectionStatus(
   composioConnectionId: string,
 ): Promise<{ status: string }> {
-  const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts/${composioConnectionId}`, {
-    headers: { 'x-api-key': apiKey() },
-  })
-  if (!res.ok) return { status: 'disconnected' }
-  const json = await res.json() as { status?: string }
-  const raw = json.status ?? ''
-  return {
-    status: raw.toUpperCase() === 'ACTIVE' ? 'active' : raw.toLowerCase(),
+  try {
+    const client = getComposioClient()
+    const account = await client.connectedAccounts.get(composioConnectionId)
+    const raw = (account.status ?? '').toUpperCase()
+    return { status: raw === 'ACTIVE' ? 'active' : raw.toLowerCase() || 'disconnected' }
+  } catch {
+    return { status: 'disconnected' }
   }
 }
 
