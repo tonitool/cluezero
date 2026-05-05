@@ -12,9 +12,7 @@
 
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { executeAction } from '@/lib/composio'
-import { mapRow, type SnowflakeMapping } from '@/lib/snowflake'
-
-const SF_VERSION = '20260407_00'
+import { mapRow, type SnowflakeMapping, SF_VERSION } from '@/lib/snowflake'
 import { detectAlerts } from '@/lib/detect-alerts'
 
 // Batch size for Supabase inserts (PostgREST handles up to ~1000 well)

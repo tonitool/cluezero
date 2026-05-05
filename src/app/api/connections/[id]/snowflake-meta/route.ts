@@ -13,8 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { executeAction } from '@/lib/composio'
-
-const SF_VERSION = '20260407_00'
+import { SF_VERSION } from '@/lib/snowflake'
 
 /** Extract a list of name strings from any Composio action response shape. */
 function extractNames(raw: unknown, keys: string[]): string[] {

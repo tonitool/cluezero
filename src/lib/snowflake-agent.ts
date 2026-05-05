@@ -14,10 +14,7 @@ import { generateText, tool, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { executeAction } from '@/lib/composio'
-import type { SnowflakeMapping } from '@/lib/snowflake'
-
-// SNOWFLAKE_BASIC toolkit version from Composio dashboard
-const SF_VERSION = '20260407_00'
+import { type SnowflakeMapping, SF_VERSION } from '@/lib/snowflake'
 
 export interface DiscoveryResult {
   ok: boolean
