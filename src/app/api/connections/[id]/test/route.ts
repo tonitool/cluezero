@@ -32,43 +32,61 @@ export async function GET(
   const cfg = (conn.config ?? {}) as Record<string, string>
   const steps: { step: string; ok: boolean; detail: string }[] = []
 
-  // Step 1: SHOW DATABASES — most basic call, no warehouse needed
+  // 1. SHOW DATABASES — no warehouse needed
   try {
-    const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
-    steps.push({ step: 'SHOW DATABASES', ok: true, detail: JSON.stringify(result).slice(0, 200) })
+    await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
+    steps.push({ step: 'SHOW DATABASES', ok: true, detail: '' })
   } catch (err) {
     steps.push({ step: 'SHOW DATABASES', ok: false, detail: String(err) })
     return NextResponse.json({ steps })
   }
 
-  // Step 2: DESCRIBE TABLE
-  if (cfg.database && cfg.schemaName && cfg.tableName) {
+  // 2. DESCRIBE TABLE
+  if (cfg.database && cfg.tableName) {
     try {
-      const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_DESCRIBE_TABLE', {
+      await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_DESCRIBE_TABLE', {
         database: cfg.database,
         schema_name: cfg.schemaName ?? 'PUBLIC',
         table_name: cfg.tableName,
       })
-      steps.push({ step: 'DESCRIBE TABLE', ok: true, detail: JSON.stringify(result).slice(0, 200) })
+      steps.push({ step: 'DESCRIBE TABLE', ok: true, detail: '' })
     } catch (err) {
       steps.push({ step: 'DESCRIBE TABLE', ok: false, detail: String(err) })
       return NextResponse.json({ steps })
     }
   }
 
-  // Step 3: Simple SELECT
-  if (cfg.database && cfg.tableName) {
-    const fqTable = `"${cfg.database}"."${cfg.schemaName ?? 'PUBLIC'}"."${cfg.tableName}"`
-    try {
-      const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
-        query: `SELECT * FROM ${fqTable} LIMIT 1`,
-        database: cfg.database,
-        schema_name: cfg.schemaName ?? 'PUBLIC',
-      })
-      steps.push({ step: 'SELECT LIMIT 1', ok: true, detail: JSON.stringify(result).slice(0, 200) })
-    } catch (err) {
-      steps.push({ step: 'SELECT LIMIT 1', ok: false, detail: String(err) })
-    }
+  if (!cfg.database || !cfg.tableName) {
+    return NextResponse.json({ steps })
+  }
+
+  const fqTable = `"${cfg.database}"."${cfg.schemaName ?? 'PUBLIC'}"."${cfg.tableName}"`
+  const db2 = cfg.database
+  const schema = cfg.schemaName ?? 'PUBLIC'
+
+  // 3. COUNT(*) — used by sync for pagination
+  try {
+    const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+      query: `SELECT COUNT(*) as total FROM ${fqTable}`,
+      database: db2,
+      schema_name: schema,
+    })
+    steps.push({ step: 'COUNT(*)', ok: true, detail: JSON.stringify(result).slice(0, 200) })
+  } catch (err) {
+    steps.push({ step: 'COUNT(*)', ok: false, detail: String(err) })
+    return NextResponse.json({ steps })
+  }
+
+  // 4. SELECT LIMIT 1
+  try {
+    const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+      query: `SELECT * FROM ${fqTable} LIMIT 1`,
+      database: db2,
+      schema_name: schema,
+    })
+    steps.push({ step: 'SELECT LIMIT 1', ok: true, detail: JSON.stringify(result).slice(0, 200) })
+  } catch (err) {
+    steps.push({ step: 'SELECT LIMIT 1', ok: false, detail: String(err) })
   }
 
   return NextResponse.json({ steps })
