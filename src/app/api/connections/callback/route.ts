@@ -16,8 +16,9 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   const status             = p.get('status')             // 'success' | 'error'
-  const connectedAccountId = p.get('connectedAccountId') // Composio connection UUID
-  const appName            = p.get('appName')
+  // V3 API uses snake_case; keep camelCase fallback for any in-flight V1 redirects
+  const connectedAccountId = p.get('connected_account_id') ?? p.get('connectedAccountId')
+  const appName            = p.get('app_name') ?? p.get('appName')
 
   const origin = req.nextUrl.origin
   const redirectBase = `${origin}/dashboard`

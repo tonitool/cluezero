@@ -4,14 +4,14 @@
  * Manages OAuth connections to external data sources (Snowflake, Google Sheets,
  * Airtable, HubSpot, etc.) via Composio's unified connector platform.
  *
- * Each workspace maps 1:1 to a Composio "entity".
- * Entity ID = workspace_id (stable, predictable, easy to look up).
+ * Each workspace maps 1:1 to a Composio "user" (V3 terminology).
+ * User ID = workspace_id (stable, predictable, easy to look up).
  *
  * Do NOT import this file in 'use client' components — use @/lib/connectors instead.
  */
 
 import 'server-only'
-import { Composio } from 'composio-core'
+import { Composio } from '@composio/core'
 export type { AppInfo } from './connectors'
 export { SUPPORTED_CONNECTORS } from './connectors'
 
@@ -22,9 +22,9 @@ const COMPOSIO_BASE = 'https://backend.composio.dev'
 let _client: Composio | null = null
 
 export function getComposioClient(): Composio {
-  const apiKey = process.env.COMPOSIO_API_KEY
-  if (!apiKey) throw new Error('COMPOSIO_API_KEY not configured')
-  if (!_client) _client = new Composio({ apiKey })
+  const key = process.env.COMPOSIO_API_KEY
+  if (!key) throw new Error('COMPOSIO_API_KEY not configured')
+  if (!_client) _client = new Composio({ apiKey: key })
   return _client
 }
 
@@ -34,12 +34,8 @@ function apiKey() {
   return key
 }
 
-/** Each workspace = one Composio entity. Returns the entity handle. */
-export function getEntity(workspaceId: string) {
-  return getComposioClient().getEntity(workspaceId)
-}
-
-// ─── Integration IDs (from Composio dashboard) ───────────────────────────────
+// ─── Auth config IDs (from Composio dashboard → Auth Configs) ────────────────
+// These correspond to V1 "integration IDs" — same values, new name in V3.
 
 export const INTEGRATION_IDS: Record<string, string | undefined> = {
   snowflake: process.env.COMPOSIO_INTEGRATION_SNOWFLAKE,
@@ -58,10 +54,13 @@ export interface InitiateConnectionResult {
 }
 
 /**
- * Create a connection for a given app.
- * For OAuth apps: returns a redirectUrl the user must visit to complete auth.
- * For Basic Auth apps (e.g. Snowflake): credentials are submitted directly
- * and the connection is active immediately — no redirect needed.
+ * Create a connection for a given app using the Composio V3 API.
+ *
+ * OAuth apps  → POST /api/v3/connected_accounts/link
+ *               Returns a redirectUrl the user must visit to complete auth.
+ *
+ * Basic auth  → POST /api/v3/connected_accounts
+ *               Credentials are submitted directly; connection is active immediately.
  */
 export async function initiateConnection(
   workspaceId: string,
@@ -69,68 +68,87 @@ export async function initiateConnection(
   params: Record<string, string> = {},
   redirectUri?: string,
 ): Promise<InitiateConnectionResult> {
-  const integrationId = INTEGRATION_IDS[appName]
-
-  // Basic Auth apps don't need OAuth redirect — credentials are submitted directly
+  const authConfigId = INTEGRATION_IDS[appName]
   const isBasicAuth = appName === 'snowflake'
 
-  const body: Record<string, unknown> = {
-    integrationId,
-    entityId: workspaceId,
-    data: params,
-  }
-  if (redirectUri && !isBasicAuth) body.redirectUri = redirectUri
-
-  const res = await fetch(`${COMPOSIO_BASE}/api/v1/connectedAccounts`, {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-
-  const json = await res.json() as {
-    connectedAccountId?: string
-    redirectUrl?: string
-    connectionStatus?: string
-    error?: string
-  }
-
-  if (!res.ok || json.error) {
-    throw new Error(json.error ?? `Composio error: ${res.status}`)
-  }
-
-  // Basic Auth: connection is active immediately
   if (isBasicAuth) {
+    // Basic Auth: POST /api/v3/connected_accounts — credentials submitted directly
+    const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        auth_config: { id: authConfigId },
+        connection: { user_id: workspaceId, data: params },
+      }),
+    })
+
+    const json = await res.json() as {
+      id?: string
+      status?: string
+      error?: string
+      message?: string
+    }
+
+    if (!res.ok || json.error) {
+      throw new Error(json.error ?? json.message ?? `Composio error: ${res.status}`)
+    }
+
     return {
-      connectionId: json.connectedAccountId ?? '',
+      connectionId: json.id ?? '',
       redirectUrl: null,
       status: 'active',
     }
   }
 
+  // OAuth: POST /api/v3/connected_accounts/link — returns a redirect URL
+  const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts/link`, {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      auth_config_id: authConfigId,
+      user_id: workspaceId,
+      ...(redirectUri ? { callback_url: redirectUri } : {}),
+    }),
+  })
+
+  const json = await res.json() as {
+    connected_account_id?: string
+    redirect_url?: string
+    error?: string
+    message?: string
+  }
+
+  if (!res.ok || json.error) {
+    throw new Error(json.error ?? json.message ?? `Composio error: ${res.status}`)
+  }
+
   return {
-    connectionId: json.connectedAccountId ?? '',
-    redirectUrl: json.redirectUrl ?? null,
-    status: json.connectionStatus?.toLowerCase() === 'initiated' ? 'pending' : (json.connectionStatus ?? 'pending'),
+    connectionId: json.connected_account_id ?? '',
+    redirectUrl: json.redirect_url ?? null,
+    status: 'pending',
   }
 }
 
 /**
- * Poll a specific connectedAccountId for its current status.
+ * Poll a specific connected account nanoid for its current status.
  */
 export async function getConnectionStatus(
   composioConnectionId: string,
 ): Promise<{ status: string }> {
-  const res = await fetch(`${COMPOSIO_BASE}/api/v1/connectedAccounts/${composioConnectionId}`, {
+  const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts/${composioConnectionId}`, {
     headers: { 'x-api-key': apiKey() },
   })
   if (!res.ok) return { status: 'disconnected' }
   const json = await res.json() as { status?: string }
   const raw = json.status ?? ''
   return {
-    status: raw === 'ACTIVE' ? 'active' : raw.toLowerCase(),
+    status: raw.toUpperCase() === 'ACTIVE' ? 'active' : raw.toLowerCase(),
   }
 }
 
@@ -143,6 +161,14 @@ export async function executeAction(
   actionName: string,
   params: Record<string, unknown>,
 ): Promise<unknown> {
-  const entity = getEntity(workspaceId)
-  return entity.execute({ actionName, params })
+  const client = getComposioClient()
+  const result = await client.tools.execute(actionName, {
+    userId: workspaceId,
+    arguments: params,
+  })
+  if (!result.successful) {
+    const msg = typeof result.data === 'string' ? result.data : JSON.stringify(result.data)
+    throw new Error(msg)
+  }
+  return result.data
 }
