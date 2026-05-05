@@ -34,7 +34,9 @@ interface Connection {
 
 // Column mapping fields — what data the sync engine needs
 const COLUMN_FIELDS = [
-  { key: 'tableName',      label: 'Table / View Name', placeholder: 'V_AD_LIBRARY_FINAL_WEEKLY', required: true,  hint: 'The Snowflake table or view to sync from' },
+  { key: 'database',       label: 'Database',           placeholder: 'MY_DATABASE',              required: true,  hint: 'Snowflake database name' },
+  { key: 'schemaName',     label: 'Schema',             placeholder: 'PUBLIC',                   required: true,  hint: 'Snowflake schema name (e.g. PUBLIC)' },
+  { key: 'tableName',      label: 'Table / View Name', placeholder: 'V_AD_LIBRARY_FINAL_WEEKLY', required: true,  hint: 'Table or view name (no database/schema prefix)' },
   { key: 'colBrand',       label: 'Brand column',       placeholder: 'BRAND_NAME',               required: true,  hint: 'Column containing the advertiser / brand name' },
   { key: 'colDate',        label: 'Date column',         placeholder: 'WEEK_START_DATE',          required: true,  hint: 'Date or week start for the row' },
   { key: 'colAdId',        label: 'Ad ID column',        placeholder: 'GLOBAL_AD_ID',             required: false, hint: 'Unique identifier for each ad' },
@@ -151,7 +153,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
 
   const app = conn ? SUPPORTED_CONNECTORS.find(a => a.key === conn.app_name) : null
   const isSyncing = conn?.sync_status === 'syncing' || syncing
-  const hasConfig = cols.tableName?.trim() && cols.colBrand?.trim() && cols.colDate?.trim()
+  const hasConfig = cols.database?.trim() && cols.schemaName?.trim() && cols.tableName?.trim() && cols.colBrand?.trim() && cols.colDate?.trim()
 
   return (
     <>

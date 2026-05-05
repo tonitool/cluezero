@@ -11,6 +11,8 @@ import 'server-only'
 import { executeAction } from '@/lib/composio'
 
 export type SnowflakeMapping = {
+  database: string
+  schema: string
   table: string
   colBrand: string
   colDate: string
@@ -28,21 +30,17 @@ export type SnowflakeMapping = {
   colFormat?: string
 }
 
+type SnowflakeResult = { data?: unknown; response?: string; error?: string }
+
 /**
  * Test Snowflake connection via Composio.
- * Runs a simple SELECT 1 to verify the connection works.
+ * Lists databases to verify the connection works.
  */
 export async function testSnowflakeConnectionComposio(
   workspaceId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const result = await executeAction(workspaceId, 'SNOWFLAKE_EXECUTE_SQL', {
-      statement: 'SELECT 1',
-    }) as { response?: string; error?: string }
-
-    if (result?.error) {
-      return { ok: false, error: result.error }
-    }
+    await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Connection test failed' }
@@ -51,7 +49,6 @@ export async function testSnowflakeConnectionComposio(
 
 /**
  * Fetch columns from a table via Composio.
- * Uses INFORMATION_SCHEMA to get column names without pulling data.
  */
 export async function fetchTableColumnsComposio(
   workspaceId: string,
@@ -60,18 +57,17 @@ export async function fetchTableColumnsComposio(
   table: string,
 ): Promise<{ ok: boolean; columns?: string[]; error?: string }> {
   try {
-    const result = await executeAction(workspaceId, 'SNOWFLAKE_EXECUTE_SQL', {
-      statement: `SELECT COLUMN_NAME FROM ${database}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}' AND TABLE_SCHEMA = '${schema}' ORDER BY ORDINAL_POSITION`,
-    }) as { response?: string; error?: string }
+    const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_DESCRIBE_TABLE', {
+      database,
+      schema_name: schema,
+      table_name: table,
+    }) as SnowflakeResult
 
-    if (result?.error) {
-      return { ok: false, error: result.error }
-    }
+    if (result?.error) return { ok: false, error: result.error }
 
-    // Composio returns rows as JSON array in response
     const rows = parseResultRows(result)
     const columns = rows.map((r: Record<string, unknown>) =>
-      String(r.COLUMN_NAME ?? r.column_name ?? '')
+      String(r.name ?? r.COLUMN_NAME ?? r.column_name ?? '')
     ).filter(Boolean)
 
     return { ok: true, columns }
@@ -88,13 +84,13 @@ export async function sampleTableComposio(
   mapping: SnowflakeMapping,
 ): Promise<{ ok: boolean; rows?: Record<string, unknown>[]; error?: string }> {
   try {
-    const result = await executeAction(workspaceId, 'SNOWFLAKE_EXECUTE_SQL', {
-      statement: `SELECT * FROM ${mapping.table} LIMIT 5`,
-    }) as { response?: string; error?: string }
+    const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+      query: `SELECT * FROM "${mapping.table}" LIMIT 5`,
+      database: mapping.database,
+      schema_name: mapping.schema,
+    }) as SnowflakeResult
 
-    if (result?.error) {
-      return { ok: false, error: result.error }
-    }
+    if (result?.error) return { ok: false, error: result.error }
 
     const rows = parseResultRows(result)
     return { ok: true, rows }
@@ -131,15 +127,15 @@ export async function fetchSnowflakeRowsComposio(
 
     const colList = [...cols].map(c => `"${c}"`).join(', ')
     const whereClause = since ? `WHERE "${mapping.colDate}" >= '${since}'` : ''
-    const sql = `SELECT ${colList} FROM ${mapping.table} ${whereClause}`
+    const sql = `SELECT ${colList} FROM "${mapping.table}" ${whereClause}`
 
-    const result = await executeAction(workspaceId, 'SNOWFLAKE_EXECUTE_SQL', {
-      statement: sql,
-    }) as { response?: string; error?: string }
+    const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+      query: sql,
+      database: mapping.database,
+      schema_name: mapping.schema,
+    }) as SnowflakeResult
 
-    if (result?.error) {
-      return { ok: false, error: result.error }
-    }
+    if (result?.error) return { ok: false, error: result.error }
 
     const rows = parseResultRows(result)
     return { ok: true, rows }
@@ -150,24 +146,26 @@ export async function fetchSnowflakeRowsComposio(
 
 /**
  * Parse Composio SQL result into row objects.
- * Composio returns results as a JSON string or array.
+ * Handles SNOWFLAKE_BASIC_* response format: result.data is the payload.
  */
-function parseResultRows(result: { response?: string }): Record<string, unknown>[] {
-  if (!result?.response) return []
+function parseResultRows(result: SnowflakeResult): Record<string, unknown>[] {
+  // SNOWFLAKE_BASIC actions return data in result.data; legacy actions used result.response
+  const raw = result?.data ?? result?.response
+  if (!raw) return []
 
-  // Try parsing as JSON array
+  const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
   try {
-    const parsed = JSON.parse(result.response)
+    const parsed = JSON.parse(str)
     if (Array.isArray(parsed)) return parsed
     if (parsed?.rows && Array.isArray(parsed.rows)) return parsed.rows
-  } catch { /* not JSON, return empty */ }
+    if (parsed?.data && Array.isArray(parsed.data)) return parsed.data
+  } catch { /* not JSON */ }
 
   return []
 }
 
 /**
  * Map a raw Snowflake row to the normalized app schema.
- * (Same logic as the old mapRow — kept identical for data consistency.)
  */
 export function mapRow(
   row: Record<string, unknown>,

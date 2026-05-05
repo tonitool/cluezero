@@ -84,20 +84,20 @@ function supabaseAdmin() {
 async function executeSnowflakeQuery(
   workspaceId: string,
   sql: string,
+  mapping: SnowflakeMapping,
   retries = MAX_RETRIES,
 ): Promise<Record<string, unknown>[]> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const result = await executeAction(workspaceId, 'SNOWFLAKE_EXECUTE_SQL', {
-        statement: sql,
-      }) as { response?: string; error?: string }
+      const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+        query: sql,
+        database: mapping.database,
+        schema_name: mapping.schema,
+      }) as { data?: unknown; response?: string; error?: string }
 
-      if (result?.error) {
-        throw new Error(result.error)
-      }
+      if (result?.error) throw new Error(result.error)
 
-      const rows = parseResultRows(result)
-      return rows
+      return parseResultRows(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (attempt === retries) throw err
@@ -108,10 +108,12 @@ async function executeSnowflakeQuery(
   return []
 }
 
-function parseResultRows(result: { response?: string }): Record<string, unknown>[] {
-  if (!result?.response) return []
+function parseResultRows(result: { data?: unknown; response?: string }): Record<string, unknown>[] {
+  const raw = result?.data ?? result?.response
+  if (!raw) return []
+  const str = typeof raw === 'string' ? raw : JSON.stringify(raw)
   try {
-    const parsed = JSON.parse(result.response)
+    const parsed = JSON.parse(str)
     if (Array.isArray(parsed)) return parsed
     if (parsed?.rows && Array.isArray(parsed.rows)) return parsed.rows
     if (parsed?.data && Array.isArray(parsed.data)) return parsed.data
@@ -152,7 +154,7 @@ async function fetchRowsChunked(
 
   // First, get the total count
   const countSql = `SELECT COUNT(*) as total FROM ${mapping.table} ${whereClause}`
-  const countRows = await executeSnowflakeQuery(workspaceId, countSql)
+  const countRows = await executeSnowflakeQuery(workspaceId, countSql, mapping)
   const totalCount = Number(countRows[0]?.TOTAL ?? countRows[0]?.total ?? 0)
 
   console.log(`[sync] Total rows to fetch: ${totalCount}`)
@@ -161,7 +163,7 @@ async function fetchRowsChunked(
 
   for (let offset = 0; offset < totalCount; offset += QUERY_CHUNK_SIZE) {
     const chunkSql = `${baseSql} LIMIT ${QUERY_CHUNK_SIZE} OFFSET ${offset}`
-    const rows = await executeSnowflakeQuery(workspaceId, chunkSql)
+    const rows = await executeSnowflakeQuery(workspaceId, chunkSql, mapping)
     allRows.push(...rows)
     onProgress?.(allRows.length)
     console.log(`[sync] Fetched ${allRows.length} / ${totalCount} rows`)
@@ -201,6 +203,8 @@ export async function syncConnection(
   const cfg = (conn.config ?? {}) as Record<string, string>
 
   const mapping: SnowflakeMapping = {
+    database: cfg.database ?? '',
+    schema: cfg.schemaName ?? 'PUBLIC',
     table: cfg.tableName ?? '',
     colBrand: cfg.colBrand ?? '',
     colDate: cfg.colDate ?? '',
@@ -218,9 +222,9 @@ export async function syncConnection(
     colFormat: cfg.colFormat ?? undefined,
   }
 
-  if (!mapping.table || !mapping.colBrand || !mapping.colDate) {
-    await setStatus(db, connectionId, 'error', 'Missing table or required column mapping')
-    return { ok: false, fetched: 0, inserted: 0, errors: ['Missing table or required column mapping'] }
+  if (!mapping.database || !mapping.table || !mapping.colBrand || !mapping.colDate) {
+    await setStatus(db, connectionId, 'error', 'Missing database, table, or required column mapping')
+    return { ok: false, fetched: 0, inserted: 0, errors: ['Missing database, table, or required column mapping'] }
   }
 
   // ── 2. Incremental sync: only fetch rows since last sync ───────────────
