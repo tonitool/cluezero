@@ -6,8 +6,6 @@
 
 import 'server-only'
 
-export const SF_VERSION = '20260407_00'
-
 export type SnowflakeMapping = {
   database: string
   schema: string

@@ -12,7 +12,7 @@
 
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { executeAction } from '@/lib/composio'
-import { mapRow, type SnowflakeMapping, SF_VERSION } from '@/lib/snowflake'
+import { mapRow, type SnowflakeMapping } from '@/lib/snowflake'
 import { detectAlerts } from '@/lib/detect-alerts'
 
 // Batch size for Supabase inserts (PostgREST handles up to ~1000 well)
@@ -93,7 +93,7 @@ async function executeSnowflakeQuery(
         query: sql,
         database: mapping.database,
         schema_name: mapping.schema,
-      }, SF_VERSION) as { data?: unknown; response?: string; error?: string }
+      }) as { data?: unknown; response?: string; error?: string }
 
       if (result?.error) throw new Error(result.error)
 

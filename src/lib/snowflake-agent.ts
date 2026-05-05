@@ -14,7 +14,7 @@ import { generateText, tool, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { executeAction } from '@/lib/composio'
-import { type SnowflakeMapping, SF_VERSION } from '@/lib/snowflake'
+import { type SnowflakeMapping } from '@/lib/snowflake'
 
 export interface DiscoveryResult {
   ok: boolean
@@ -36,7 +36,7 @@ export async function discoverSnowflakeMapping(workspaceId: string): Promise<Dis
       inputSchema: z.object({}),
       execute: async () => {
         log.push('→ SHOW DATABASES')
-        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {}, SF_VERSION)
+        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
       },
     }),
     showSchemas: tool({
@@ -44,7 +44,7 @@ export async function discoverSnowflakeMapping(workspaceId: string): Promise<Dis
       inputSchema: z.object({ database: z.string() }),
       execute: async ({ database }) => {
         log.push(`→ SHOW SCHEMAS in ${database}`)
-        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database }, SF_VERSION)
+        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database })
       },
     }),
     showTables: tool({
@@ -52,7 +52,7 @@ export async function discoverSnowflakeMapping(workspaceId: string): Promise<Dis
       inputSchema: z.object({ database: z.string(), schema_name: z.string() }),
       execute: async ({ database, schema_name }) => {
         log.push(`→ SHOW TABLES in ${database}.${schema_name}`)
-        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', { database, schema_name }, SF_VERSION)
+        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', { database, schema_name })
       },
     }),
     describeTable: tool({
@@ -60,7 +60,7 @@ export async function discoverSnowflakeMapping(workspaceId: string): Promise<Dis
       inputSchema: z.object({ database: z.string(), schema_name: z.string(), table_name: z.string() }),
       execute: async ({ database, schema_name, table_name }) => {
         log.push(`→ DESCRIBE TABLE ${database}.${schema_name}.${table_name}`)
-        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_DESCRIBE_TABLE', { database, schema_name, table_name }, SF_VERSION)
+        return executeAction(workspaceId, 'SNOWFLAKE_BASIC_DESCRIBE_TABLE', { database, schema_name, table_name })
       },
     }),
     sampleTable: tool({
@@ -72,7 +72,7 @@ export async function discoverSnowflakeMapping(workspaceId: string): Promise<Dis
           query: `SELECT * FROM "${table_name}" LIMIT 3`,
           database,
           schema_name,
-        }, SF_VERSION)
+        })
       },
     }),
   }
