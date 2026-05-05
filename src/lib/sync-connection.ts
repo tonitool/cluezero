@@ -4,7 +4,7 @@ import { mapRow, detectDateColumn, type SnowflakeMapping } from '@/lib/snowflake
 import { detectAlerts } from '@/lib/detect-alerts'
 
 const BATCH_SIZE = 500
-const QUERY_CHUNK_SIZE = 2000
+const QUERY_CHUNK_SIZE = 100
 const MAX_RETRIES = 3
 
 interface MappedRow {

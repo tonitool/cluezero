@@ -87,6 +87,19 @@ export async function GET(
     steps.push({ step: 'SELECT LIMIT 1', ok: true, detail: JSON.stringify(result).slice(0, 200) })
   } catch (err) {
     steps.push({ step: 'SELECT LIMIT 1', ok: false, detail: String(err) })
+    return NextResponse.json({ steps })
+  }
+
+  // 5. SELECT LIMIT 100 OFFSET 0 — mirrors what sync actually does
+  try {
+    const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+      query: `SELECT * FROM ${fqTable} LIMIT 100 OFFSET 0`,
+      database: db2,
+      schema_name: schema,
+    })
+    steps.push({ step: 'SELECT LIMIT 100', ok: true, detail: JSON.stringify(result).slice(0, 200) })
+  } catch (err) {
+    steps.push({ step: 'SELECT LIMIT 100', ok: false, detail: String(err) })
   }
 
   return NextResponse.json({ steps })
