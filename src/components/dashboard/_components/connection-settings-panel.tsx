@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   X, RefreshCcw, CheckCircle2, AlertCircle, Clock,
-  Loader2, Save, Sparkles,
+  Loader2, Save,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,21 +29,21 @@ interface Connection {
   created_at: string
 }
 
-const COLUMN_LABELS: Record<string, string> = {
-  colBrand: 'Brand',
-  colDate: 'Date',
-  colAdId: 'Ad ID',
-  colHeadline: 'Headline',
-  colSpend: 'Spend',
-  colImpressions: 'Impressions',
-  colReach: 'Reach',
-  colPi: 'Performance Index',
-  colFunnel: 'Funnel',
-  colTopic: 'Topic',
-  colPlatform: 'Platform',
-  colThumbnail: 'Thumbnail URL',
-  colIsActive: 'Is Active',
-}
+const COLUMN_FIELDS: { key: string; label: string; required?: boolean }[] = [
+  { key: 'colBrand',       label: 'Brand column',        required: true },
+  { key: 'colDate',        label: 'Date column',          required: true },
+  { key: 'colAdId',        label: 'Ad ID column' },
+  { key: 'colHeadline',    label: 'Headline column' },
+  { key: 'colSpend',       label: 'Spend column' },
+  { key: 'colImpressions', label: 'Impressions column' },
+  { key: 'colReach',       label: 'Reach column' },
+  { key: 'colPi',          label: 'Performance Index column' },
+  { key: 'colFunnel',      label: 'Funnel column' },
+  { key: 'colTopic',       label: 'Topic column' },
+  { key: 'colPlatform',    label: 'Platform column' },
+  { key: 'colThumbnail',   label: 'Thumbnail URL column' },
+  { key: 'colIsActive',    label: 'Is Active column' },
+]
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
@@ -64,7 +64,13 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // Editable fields
   const [name, setName] = useState('')
+  const [database, setDatabase] = useState('')
+  const [schemaName, setSchemaName] = useState('')
+  const [tableName, setTableName] = useState('')
+  const [cols, setCols] = useState<Record<string, string>>({})
 
   const fetchConn = useCallback(async () => {
     try {
@@ -73,6 +79,13 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
       const { connection: c } = await res.json() as { connection: Connection }
       setConn(c)
       setName(c.name)
+      const cfg = (c.config ?? {}) as Record<string, string>
+      setDatabase(cfg.database ?? '')
+      setSchemaName(cfg.schemaName ?? '')
+      setTableName(cfg.tableName ?? '')
+      const colMap: Record<string, string> = {}
+      for (const { key } of COLUMN_FIELDS) colMap[key] = cfg[key] ?? ''
+      setCols(colMap)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -95,7 +108,10 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
       const res = await fetch(`/api/connections/${connectionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          config: { database, schemaName, tableName, ...cols },
+        }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       await fetchConn()
@@ -128,9 +144,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
 
   const app = conn ? SUPPORTED_CONNECTORS.find(a => a.key === conn.app_name) : null
   const isSyncing = conn?.sync_status === 'syncing' || syncing
-  const cfg = conn?.config as Record<string, string> | undefined
-  const hasMapping = !!(cfg?.database && cfg?.tableName && cfg?.colBrand && cfg?.colDate)
-  const mappedCols = Object.entries(COLUMN_LABELS).filter(([k]) => cfg?.[k])
+  const hasMapping = !!(database && tableName && cols.colBrand && cols.colDate)
 
   return (
     <>
@@ -191,7 +205,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
                   variant="outline"
                   className="gap-1.5 text-xs shrink-0"
                   onClick={handleSync}
-                  disabled={isSyncing || conn?.status !== 'active'}
+                  disabled={isSyncing || conn?.status !== 'active' || !hasMapping}
                 >
                   <RefreshCcw className={cn('size-3.5', isSyncing && 'animate-spin')} />
                   {isSyncing ? 'Syncing…' : 'Sync now'}
@@ -217,9 +231,6 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
               {conn?.sync_error && !isSyncing && (
                 <p className="mt-2 text-[11px] text-rose-600 bg-rose-50 rounded px-2 py-1">{conn.sync_error}</p>
               )}
-              {isSyncing && conn?.sync_error && (
-                <p className="mt-2 text-[11px] text-indigo-600 bg-indigo-50 rounded px-2 py-1">{conn.sync_error}</p>
-              )}
             </div>
 
             {/* Connection name */}
@@ -233,48 +244,44 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
               />
             </div>
 
-            {/* Discovered mapping */}
-            <div className="px-5 pt-5 pb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="size-3.5 text-indigo-500" />
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Discovered Mapping</p>
+            {/* Table location */}
+            <div className="px-5 pt-5 pb-4 border-b border-zinc-100 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Table location</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-[11px]">Database <span className="text-rose-500">*</span></Label>
+                  <Input value={database} onChange={e => setDatabase(e.target.value)} className="mt-1 h-7 text-xs font-mono" placeholder="MY_DB" />
+                </div>
+                <div>
+                  <Label className="text-[11px]">Schema</Label>
+                  <Input value={schemaName} onChange={e => setSchemaName(e.target.value)} className="mt-1 h-7 text-xs font-mono" placeholder="PUBLIC" />
+                </div>
+                <div>
+                  <Label className="text-[11px]">Table <span className="text-rose-500">*</span></Label>
+                  <Input value={tableName} onChange={e => setTableName(e.target.value)} className="mt-1 h-7 text-xs font-mono" placeholder="AD_LIBRARY" />
+                </div>
               </div>
+            </div>
 
-              {!hasMapping ? (
-                <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-center">
-                  <Sparkles className="size-5 mx-auto mb-2 text-indigo-400" />
-                  <p className="text-xs font-medium text-zinc-700 mb-1">No schema discovered yet</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Click &ldquo;Sync now&rdquo; and the AI agent will automatically explore your Snowflake account,
-                    find the right table, and map the columns.
-                  </p>
+            {/* Column mapping */}
+            <div className="px-5 pt-5 pb-8 space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">Column mapping</p>
+              {COLUMN_FIELDS.map(({ key, label, required }) => (
+                <div key={key} className="flex items-center gap-3">
+                  <Label className="text-[11px] w-44 shrink-0 text-right text-muted-foreground">
+                    {label}{required && <span className="text-rose-500 ml-0.5">*</span>}
+                  </Label>
+                  <Input
+                    value={cols[key] ?? ''}
+                    onChange={e => setCols(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="h-7 text-xs font-mono"
+                    placeholder="COLUMN_NAME"
+                  />
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-zinc-50 border border-zinc-100 px-3 py-2.5">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Table</p>
-                    <p className="text-xs font-mono font-medium">
-                      {cfg?.database}.{cfg?.schemaName}.{cfg?.tableName}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Column mapping</p>
-                    <div className="rounded-lg border border-zinc-100 divide-y divide-zinc-100 overflow-hidden">
-                      {mappedCols.map(([key, label]) => (
-                        <div key={key} className="flex items-center justify-between px-3 py-1.5 bg-white">
-                          <span className="text-[11px] text-muted-foreground">{label}</span>
-                          <span className="text-[11px] font-mono text-zinc-700">{cfg?.[key]}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-muted-foreground">
-                    Sync again to re-discover if your schema has changed.
-                  </p>
-                </div>
-              )}
+              ))}
+              <p className="text-[11px] text-muted-foreground pt-1">
+                Enter the exact column names from your Snowflake table. <span className="text-rose-500">*</span> required to sync.
+              </p>
             </div>
           </div>
         )}
