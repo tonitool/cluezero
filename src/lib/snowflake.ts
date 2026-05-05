@@ -8,6 +8,7 @@ export type SnowflakeMapping = {
   database: string
   schema: string
   table: string
+  warehouse?: string
 }
 
 /**

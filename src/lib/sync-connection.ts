@@ -69,6 +69,7 @@ async function executeSnowflakeQuery(
         query: sql,
         database: mapping.database,
         schema_name: mapping.schema,
+        ...(mapping.warehouse ? { warehouse: mapping.warehouse } : {}),
       }) as { data?: unknown; response?: string; error?: string }
 
       if (result?.error) throw new Error(result.error)
@@ -102,12 +103,14 @@ async function fetchRowsChunked(
   since?: string,
   onProgress?: (fetched: number) => void,
 ): Promise<Record<string, unknown>[]> {
+  const fqTable = `"${mapping.database}"."${mapping.schema}"."${mapping.table}"`
+
   // Sample one row to detect the date column name for incremental filtering
   let whereClause = ''
   if (since) {
     const sample = await executeSnowflakeQuery(
       workspaceId,
-      `SELECT * FROM "${mapping.table}" LIMIT 1`,
+      `SELECT * FROM ${fqTable} LIMIT 1`,
       mapping,
     )
     const dateCol = sample[0] ? detectDateColumn(sample[0]) : null
@@ -116,14 +119,14 @@ async function fetchRowsChunked(
     }
   }
 
-  const countSql = `SELECT COUNT(*) as total FROM "${mapping.table}" ${whereClause}`
+  const countSql = `SELECT COUNT(*) as total FROM ${fqTable} ${whereClause}`
   const countRows = await executeSnowflakeQuery(workspaceId, countSql, mapping)
   const totalCount = Number(countRows[0]?.TOTAL ?? countRows[0]?.total ?? 0)
   console.log(`[sync] Total rows to fetch: ${totalCount}`)
 
   const allRows: Record<string, unknown>[] = []
   for (let offset = 0; offset < totalCount; offset += QUERY_CHUNK_SIZE) {
-    const sql = `SELECT * FROM "${mapping.table}" ${whereClause} LIMIT ${QUERY_CHUNK_SIZE} OFFSET ${offset}`
+    const sql = `SELECT * FROM ${fqTable} ${whereClause} LIMIT ${QUERY_CHUNK_SIZE} OFFSET ${offset}`
     const rows = await executeSnowflakeQuery(workspaceId, sql, mapping)
     allRows.push(...rows)
     onProgress?.(allRows.length)
@@ -159,9 +162,10 @@ export async function syncConnection(
 
   const cfg = (conn.config ?? {}) as Record<string, string>
   const mapping: SnowflakeMapping = {
-    database: cfg.database ?? '',
-    schema:   cfg.schemaName ?? 'PUBLIC',
-    table:    cfg.tableName ?? '',
+    database:  cfg.database ?? '',
+    schema:    cfg.schemaName ?? 'PUBLIC',
+    table:     cfg.tableName ?? '',
+    warehouse: cfg.warehouse || undefined,
   }
 
   if (!mapping.database || !mapping.table) {

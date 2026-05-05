@@ -50,6 +50,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   const [database, setDatabase] = useState('')
   const [schemaName, setSchemaName] = useState('')
   const [tableName, setTableName] = useState('')
+  const [warehouse, setWarehouse] = useState('')
 
   const fetchConn = useCallback(async () => {
     try {
@@ -62,6 +63,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
       setDatabase(cfg.database ?? '')
       setSchemaName(cfg.schemaName ?? '')
       setTableName(cfg.tableName ?? '')
+      setWarehouse(cfg.warehouse ?? '')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -83,7 +85,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
       const res = await fetch(`/api/connections/${connectionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, config: { database, schemaName, tableName } }),
+        body: JSON.stringify({ name, config: { database, schemaName, tableName, warehouse } }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       await fetchConn()
@@ -228,6 +230,10 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
                   <Label className="text-[11px]">Table / View</Label>
                   <Input value={tableName} onChange={e => setTableName(e.target.value)} className="mt-1 h-7 text-xs font-mono" placeholder="AD_LIBRARY" />
                 </div>
+              </div>
+              <div>
+                <Label className="text-[11px]">Warehouse</Label>
+                <Input value={warehouse} onChange={e => setWarehouse(e.target.value)} className="mt-1 h-7 text-xs font-mono" placeholder="COMPUTE_WH" />
               </div>
             </div>
           </div>
