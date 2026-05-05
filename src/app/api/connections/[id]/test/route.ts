@@ -77,29 +77,19 @@ export async function GET(
     return NextResponse.json({ steps })
   }
 
-  // 4. SELECT LIMIT 1
-  try {
-    const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
-      query: `SELECT * FROM ${fqTable} LIMIT 1`,
-      database: db2,
-      schema_name: schema,
-    })
-    steps.push({ step: 'SELECT LIMIT 1', ok: true, detail: JSON.stringify(result).slice(0, 200) })
-  } catch (err) {
-    steps.push({ step: 'SELECT LIMIT 1', ok: false, detail: String(err) })
-    return NextResponse.json({ steps })
-  }
-
-  // 5. SELECT LIMIT 100 OFFSET 0 — mirrors what sync actually does
-  try {
-    const result = await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
-      query: `SELECT * FROM ${fqTable} LIMIT 100 OFFSET 0`,
-      database: db2,
-      schema_name: schema,
-    })
-    steps.push({ step: 'SELECT LIMIT 100', ok: true, detail: JSON.stringify(result).slice(0, 200) })
-  } catch (err) {
-    steps.push({ step: 'SELECT LIMIT 100', ok: false, detail: String(err) })
+  // 5. SELECT at increasing sizes — find Composio's limit
+  for (const limit of [100, 500, 1000]) {
+    try {
+      await executeAction(conn.workspace_id, 'SNOWFLAKE_BASIC_RUN_QUERY', {
+        query: `SELECT * FROM ${fqTable} LIMIT ${limit} OFFSET 0`,
+        database: db2,
+        schema_name: schema,
+      })
+      steps.push({ step: `SELECT LIMIT ${limit}`, ok: true, detail: '' })
+    } catch (err) {
+      steps.push({ step: `SELECT LIMIT ${limit}`, ok: false, detail: String(err) })
+      break
+    }
   }
 
   return NextResponse.json({ steps })
