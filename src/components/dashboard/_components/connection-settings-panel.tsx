@@ -3,14 +3,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   X, RefreshCcw, CheckCircle2, AlertCircle, Clock,
-  Loader2, Save, Database, Table2, ChevronDown,
+  Loader2, Save, Database, ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion } from 'motion/react'
 import { SUPPORTED_CONNECTORS } from '@/lib/connectors'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,31 +31,68 @@ interface Connection {
   created_at: string
 }
 
-// Column mapping fields — what data the sync engine needs
-const COLUMN_FIELDS = [
-  { key: 'database',       label: 'Database',           placeholder: 'MY_DATABASE',              required: true,  hint: 'Snowflake database name' },
-  { key: 'schemaName',     label: 'Schema',             placeholder: 'PUBLIC',                   required: true,  hint: 'Snowflake schema name (e.g. PUBLIC)' },
-  { key: 'tableName',      label: 'Table / View Name', placeholder: 'V_AD_LIBRARY_FINAL_WEEKLY', required: true,  hint: 'Table or view name (no database/schema prefix)' },
-  { key: 'colBrand',       label: 'Brand column',       placeholder: 'BRAND_NAME',               required: true,  hint: 'Column containing the advertiser / brand name' },
-  { key: 'colDate',        label: 'Date column',         placeholder: 'WEEK_START_DATE',          required: true,  hint: 'Date or week start for the row' },
-  { key: 'colAdId',        label: 'Ad ID column',        placeholder: 'GLOBAL_AD_ID',             required: false, hint: 'Unique identifier for each ad' },
-  { key: 'colHeadline',    label: 'Headline column',     placeholder: 'AD_HEADLINE',              required: false, hint: 'Ad headline or title text' },
-  { key: 'colSpend',       label: 'Spend column',        placeholder: 'EST_SPEND_EUR',            required: false, hint: 'Estimated spend (any currency)' },
-  { key: 'colImpressions', label: 'Impressions column',  placeholder: 'EST_IMPRESSIONS',          required: false, hint: 'Estimated impressions' },
-  { key: 'colReach',       label: 'Reach column',        placeholder: 'EST_REACH',                required: false, hint: 'Estimated reach / unique users' },
-  { key: 'colPi',          label: 'Performance Index',   placeholder: 'PERFORMANCE_INDEX',        required: false, hint: 'Engagement / performance score (0–100)' },
-  { key: 'colFunnel',      label: 'Funnel stage column', placeholder: 'FUNNEL_STAGE',             required: false, hint: 'TOFU / MOFU / BOFU or see/think/do/care' },
-  { key: 'colTopic',       label: 'Topic column',        placeholder: 'TOPIC',                    required: false, hint: 'Ad topic or creative theme' },
-  { key: 'colPlatform',    label: 'Platform column',     placeholder: 'SOURCE_PLATFORM',          required: false, hint: 'META / GOOGLE / LINKEDIN etc.' },
-  { key: 'colThumbnail',   label: 'Thumbnail URL column', placeholder: 'THUMBNAIL_URL',           required: false, hint: 'URL of the ad creative image' },
-  { key: 'colIsActive',    label: 'Is Active column',    placeholder: 'IS_ACTIVE',                required: false, hint: 'Boolean — whether the ad is currently running' },
+const COLUMN_MAPPING_FIELDS = [
+  { key: 'colBrand',       label: 'Brand',          required: true,  hint: 'Advertiser / brand name' },
+  { key: 'colDate',        label: 'Date',            required: true,  hint: 'Row date or week start' },
+  { key: 'colAdId',        label: 'Ad ID',           required: false, hint: 'Unique ad identifier' },
+  { key: 'colHeadline',    label: 'Headline',        required: false, hint: 'Ad headline or title' },
+  { key: 'colSpend',       label: 'Spend',           required: false, hint: 'Estimated spend' },
+  { key: 'colImpressions', label: 'Impressions',     required: false, hint: 'Estimated impressions' },
+  { key: 'colReach',       label: 'Reach',           required: false, hint: 'Estimated reach' },
+  { key: 'colPi',          label: 'Performance Index', required: false, hint: 'Engagement score 0–100' },
+  { key: 'colFunnel',      label: 'Funnel stage',    required: false, hint: 'TOFU / MOFU / BOFU' },
+  { key: 'colTopic',       label: 'Topic',           required: false, hint: 'Ad topic or theme' },
+  { key: 'colPlatform',    label: 'Platform',        required: false, hint: 'META / GOOGLE / etc.' },
+  { key: 'colThumbnail',   label: 'Thumbnail URL',   required: false, hint: 'Ad creative image URL' },
+  { key: 'colIsActive',    label: 'Is Active',       required: false, hint: 'Boolean — ad is running' },
 ] as const
 
-type ColKey = typeof COLUMN_FIELDS[number]['key']
+type ColKey = typeof COLUMN_MAPPING_FIELDS[number]['key']
+type Config = { database: string; schemaName: string; tableName: string } & Record<ColKey, string>
 
 function fmt(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+// ─── Dropdown ─────────────────────────────────────────────────────────────────
+
+function Dropdown({
+  value, onChange, items, loading, disabled, placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  items: string[]
+  loading?: boolean
+  disabled?: boolean
+  placeholder: string
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        disabled={disabled || loading}
+        className={cn(
+          'w-full h-8 pl-2.5 pr-7 text-xs font-mono rounded-md border border-input bg-background',
+          'appearance-none focus:outline-none focus:ring-1 focus:ring-ring',
+          (disabled || loading) && 'opacity-50 cursor-not-allowed',
+          !value && 'text-muted-foreground',
+        )}
+      >
+        <option value="">{loading ? 'Loading…' : placeholder}</option>
+        {items.map(item => (
+          <option key={item} value={item}>{item}</option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+        {loading
+          ? <Loader2 className="size-3 animate-spin text-muted-foreground" />
+          : <ChevronDown className="size-3 text-muted-foreground" />
+        }
+      </div>
+    </div>
+  )
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -76,25 +112,40 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   const [error, setError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  // Local form state
   const [name, setName] = useState('')
-  const [cols, setCols] = useState<Record<ColKey, string>>({} as Record<ColKey, string>)
+  const [cfg, setCfg] = useState<Config>({
+    database: '', schemaName: '', tableName: '',
+    colBrand: '', colDate: '', colAdId: '', colHeadline: '',
+    colSpend: '', colImpressions: '', colReach: '', colPi: '',
+    colFunnel: '', colTopic: '', colPlatform: '', colThumbnail: '', colIsActive: '',
+  })
+
+  // Snowflake metadata
+  const [databases, setDatabases]   = useState<string[]>([])
+  const [schemas, setSchemas]       = useState<string[]>([])
+  const [tables, setTables]         = useState<string[]>([])
+  const [columns, setColumns]       = useState<string[]>([])
+  const [loadingDb, setLoadingDb]   = useState(false)
+  const [loadingSc, setLoadingSc]   = useState(false)
+  const [loadingTb, setLoadingTb]   = useState(false)
+  const [loadingCo, setLoadingCo]   = useState(false)
+
+  const meta = useCallback(async (params: Record<string, string>) => {
+    const qs = new URLSearchParams(params).toString()
+    const res = await fetch(`/api/connections/${connectionId}/snowflake-meta?${qs}`)
+    if (!res.ok) throw new Error((await res.json()).error)
+    return (await res.json()).items as string[]
+  }, [connectionId])
 
   const fetchConn = useCallback(async () => {
     try {
       const res = await fetch(`/api/connections/${connectionId}`)
       if (!res.ok) throw new Error('Failed to load connection')
-      const data = await res.json()
-      const c: Connection = data.connection
+      const { connection: c } = await res.json() as { connection: Connection }
       setConn(c)
       setName(c.name)
-      // Hydrate column fields from saved config
-      const saved = c.config as Record<string, string>
-      const hydrated = {} as Record<ColKey, string>
-      for (const f of COLUMN_FIELDS) {
-        hydrated[f.key] = saved[f.key] ?? ''
-      }
-      setCols(hydrated)
+      const saved = c.config as Partial<Config>
+      setCfg(prev => ({ ...prev, ...Object.fromEntries(Object.entries(saved).filter(([, v]) => typeof v === 'string')) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load')
     } finally {
@@ -111,15 +162,57 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
     return () => clearInterval(t)
   }, [conn?.sync_status, fetchConn])
 
+  // Load databases once connection is active
+  useEffect(() => {
+    if (conn?.status !== 'active') return
+    setLoadingDb(true)
+    meta({ type: 'databases' })
+      .then(setDatabases)
+      .catch(() => {})
+      .finally(() => setLoadingDb(false))
+  }, [conn?.status, meta])
+
+  // Load schemas when database changes
+  useEffect(() => {
+    if (!cfg.database) { setSchemas([]); setCfg(p => ({ ...p, schemaName: '', tableName: '' })); setColumns([]); return }
+    setLoadingSc(true)
+    meta({ type: 'schemas', database: cfg.database })
+      .then(setSchemas)
+      .catch(() => {})
+      .finally(() => setLoadingSc(false))
+  }, [cfg.database, meta])
+
+  // Load tables when schema changes
+  useEffect(() => {
+    if (!cfg.database || !cfg.schemaName) { setTables([]); setCfg(p => ({ ...p, tableName: '' })); setColumns([]); return }
+    setLoadingTb(true)
+    meta({ type: 'tables', database: cfg.database, schema: cfg.schemaName })
+      .then(setTables)
+      .catch(() => {})
+      .finally(() => setLoadingTb(false))
+  }, [cfg.database, cfg.schemaName, meta])
+
+  // Load columns when table changes
+  useEffect(() => {
+    if (!cfg.database || !cfg.schemaName || !cfg.tableName) { setColumns([]); return }
+    setLoadingCo(true)
+    meta({ type: 'columns', database: cfg.database, schema: cfg.schemaName, table: cfg.tableName })
+      .then(setColumns)
+      .catch(() => {})
+      .finally(() => setLoadingCo(false))
+  }, [cfg.database, cfg.schemaName, cfg.tableName, meta])
+
+  function set(key: keyof Config, value: string) {
+    setCfg(prev => ({ ...prev, [key]: value }))
+  }
+
   async function handleSave() {
-    setSaving(true)
-    setError(null)
-    setSaveSuccess(false)
+    setSaving(true); setError(null); setSaveSuccess(false)
     try {
       const res = await fetch(`/api/connections/${connectionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, config: cols }),
+        body: JSON.stringify({ name, config: cfg }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       await fetchConn()
@@ -133,8 +226,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   }
 
   async function handleSync() {
-    setSyncing(true)
-    setError(null)
+    setSyncing(true); setError(null)
     try {
       const res = await fetch('/api/sync/snowflake', {
         method: 'POST',
@@ -153,14 +245,12 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
 
   const app = conn ? SUPPORTED_CONNECTORS.find(a => a.key === conn.app_name) : null
   const isSyncing = conn?.sync_status === 'syncing' || syncing
-  const hasConfig = cols.database?.trim() && cols.schemaName?.trim() && cols.tableName?.trim() && cols.colBrand?.trim() && cols.colDate?.trim()
+  const hasConfig = !!(cfg.database && cfg.schemaName && cfg.tableName && cfg.colBrand && cfg.colDate)
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Panel */}
       <motion.div
         initial={{ x: '100%' }}
         animate={{ x: 0 }}
@@ -191,7 +281,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
         ) : (
           <div className="flex-1 overflow-y-auto">
 
-            {/* Status + Sync bar */}
+            {/* Status + Sync */}
             <div className="px-5 py-4 border-b border-zinc-100 bg-zinc-50">
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -223,7 +313,6 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
                 </Button>
               </div>
 
-              {/* Progress bar */}
               {isSyncing && conn?.sync_total && (
                 <div className="mt-3">
                   <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
@@ -243,10 +332,9 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
               {conn?.sync_error && (
                 <p className="mt-2 text-[11px] text-rose-600 bg-rose-50 rounded px-2 py-1">{conn.sync_error}</p>
               )}
-
               {!hasConfig && conn?.status === 'active' && (
                 <p className="mt-2 text-[11px] text-amber-600 bg-amber-50 rounded px-2 py-1">
-                  ⚠ Configure table and required columns below before syncing.
+                  ⚠ Select a table and map the required columns below before syncing.
                 </p>
               )}
             </div>
@@ -262,65 +350,95 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
               />
             </div>
 
-            {/* Column mapping */}
-            <div className="px-5 pt-5 pb-6">
+            {/* Table picker */}
+            <div className="px-5 pt-5 pb-5 border-b border-zinc-100">
               <div className="flex items-center gap-2 mb-4">
                 <Database className="size-3.5 text-muted-foreground" />
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  Table & Column Mapping
-                </p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Data Source</p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs mb-1 block">Database <span className="text-rose-500">*</span></Label>
+                  <Dropdown
+                    value={cfg.database}
+                    onChange={v => set('database', v)}
+                    items={databases}
+                    loading={loadingDb}
+                    placeholder="Select database…"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block">Schema <span className="text-rose-500">*</span></Label>
+                  <Dropdown
+                    value={cfg.schemaName}
+                    onChange={v => set('schemaName', v)}
+                    items={schemas}
+                    loading={loadingSc}
+                    disabled={!cfg.database}
+                    placeholder={cfg.database ? 'Select schema…' : 'Select database first'}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block">Table / View <span className="text-rose-500">*</span></Label>
+                  <Dropdown
+                    value={cfg.tableName}
+                    onChange={v => set('tableName', v)}
+                    items={tables}
+                    loading={loadingTb}
+                    disabled={!cfg.schemaName}
+                    placeholder={cfg.schemaName ? 'Select table…' : 'Select schema first'}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Column mapping */}
+            <div className="px-5 pt-5 pb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Column Mapping</p>
               </div>
 
-              <div className="space-y-4">
-                {COLUMN_FIELDS.map((field, i) => (
-                  <div key={field.key}>
-                    {/* Section divider before optional fields */}
-                    {i === 3 && (
-                      <div className="flex items-center gap-3 mb-4 pt-1">
-                        <div className="h-px flex-1 bg-zinc-100" />
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Optional columns</span>
-                        <div className="h-px flex-1 bg-zinc-100" />
-                      </div>
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <Label className="text-xs">
+              {!cfg.tableName ? (
+                <p className="text-xs text-muted-foreground">Select a table above to map columns.</p>
+              ) : (
+                <div className="space-y-3">
+                  {COLUMN_MAPPING_FIELDS.map((field, i) => (
+                    <div key={field.key}>
+                      {i === 2 && (
+                        <div className="flex items-center gap-3 mb-3 pt-1">
+                          <div className="h-px flex-1 bg-zinc-100" />
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Optional</span>
+                          <div className="h-px flex-1 bg-zinc-100" />
+                        </div>
+                      )}
+                      <div>
+                        <Label className="text-xs mb-1 block">
                           {field.label}
                           {field.required && <span className="text-rose-500 ml-0.5">*</span>}
+                          <span className="text-muted-foreground font-normal ml-1">— {field.hint}</span>
                         </Label>
-                        {cols[field.key] && (
-                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-emerald-600 border-emerald-200 bg-emerald-50">
-                            set
-                          </Badge>
-                        )}
+                        <Dropdown
+                          value={cfg[field.key]}
+                          onChange={v => set(field.key, v)}
+                          items={columns}
+                          loading={loadingCo}
+                          placeholder="Select column…"
+                        />
                       </div>
-                      <Input
-                        value={cols[field.key] ?? ''}
-                        onChange={e => setCols(prev => ({ ...prev, [field.key]: e.target.value }))}
-                        placeholder={field.placeholder}
-                        className="h-8 text-xs font-mono"
-                      />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{field.hint}</p>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Footer actions */}
+        {/* Footer */}
         {!loading && (
           <div className="px-5 py-4 border-t border-zinc-100 shrink-0 bg-white">
-            {error && (
-              <p className="text-xs text-rose-600 mb-3">{error}</p>
-            )}
+            {error && <p className="text-xs text-rose-600 mb-3">{error}</p>}
             <div className="flex items-center gap-2">
-              <Button
-                className="flex-1 gap-1.5 text-xs"
-                onClick={handleSave}
-                disabled={saving}
-              >
+              <Button className="flex-1 gap-1.5 text-xs" onClick={handleSave} disabled={saving}>
                 {saving
                   ? <><Loader2 className="size-3 animate-spin" />Saving…</>
                   : saveSuccess
@@ -328,9 +446,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
                   : <><Save className="size-3" />Save changes</>
                 }
               </Button>
-              <Button variant="outline" className="text-xs" onClick={onClose}>
-                Close
-              </Button>
+              <Button variant="outline" className="text-xs" onClick={onClose}>Close</Button>
             </div>
           </div>
         )}

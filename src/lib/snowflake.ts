@@ -32,6 +32,34 @@ export type SnowflakeMapping = {
 
 type SnowflakeResult = { data?: unknown; response?: string; error?: string }
 
+export async function listDatabases(workspaceId: string): Promise<string[]> {
+  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {}) as SnowflakeResult
+  return parseNameList(result, ['name', 'DATABASE_NAME', 'database_name'])
+}
+
+export async function listSchemas(workspaceId: string, database: string): Promise<string[]> {
+  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database }) as SnowflakeResult
+  return parseNameList(result, ['name', 'SCHEMA_NAME', 'schema_name'])
+}
+
+export async function listTables(workspaceId: string, database: string, schema: string): Promise<string[]> {
+  const result = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', {
+    database,
+    schema_name: schema,
+  }) as SnowflakeResult
+  return parseNameList(result, ['name', 'TABLE_NAME', 'table_name'])
+}
+
+function parseNameList(result: SnowflakeResult, keys: string[]): string[] {
+  const rows = parseResultRows(result)
+  return rows.map(r => {
+    for (const k of keys) {
+      if (typeof r[k] === 'string' && r[k]) return r[k] as string
+    }
+    return ''
+  }).filter(Boolean)
+}
+
 /**
  * Test Snowflake connection via Composio.
  * Lists databases to verify the connection works.
