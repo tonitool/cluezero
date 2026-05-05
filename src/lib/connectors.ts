@@ -31,21 +31,21 @@ export const SUPPORTED_CONNECTORS: AppInfo[] = [
     categories: ['data-warehouse'],
     inputFields: [
       {
-        name: 'account_identifier',
-        label: 'Account Identifier',
-        placeholder: 'xy12345.us-east-1',
-        description: 'Found in Admin → Accounts in Snowsight. Format: account-id.region',
+        name: 'Account ID',
+        label: 'Account ID',
+        placeholder: 'myorganization-myaccount',
+        description: 'Your Snowflake account ID. Format: myorganization-myaccount (find it in the bottom-left account switcher in Snowsight).',
         required: true,
       },
       {
-        name: 'username',
+        name: 'Username',
         label: 'Username',
         placeholder: 'svc_cluezero',
         description: 'A service account username in Snowflake. No MFA required.',
         required: true,
       },
       {
-        name: 'password',
+        name: 'Password',
         label: 'Password',
         placeholder: '••••••••••••',
         description: 'Password for the service account.',
