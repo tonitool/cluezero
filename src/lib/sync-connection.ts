@@ -69,7 +69,6 @@ async function executeSnowflakeQuery(
         query: sql,
         database: mapping.database,
         schema_name: mapping.schema,
-        ...(mapping.warehouse ? { warehouse: mapping.warehouse } : {}),
       }) as { data?: unknown; response?: string; error?: string }
 
       if (result?.error) throw new Error(result.error)
