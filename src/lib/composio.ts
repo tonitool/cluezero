@@ -93,7 +93,13 @@ export async function initiateConnection(
       headers: { 'x-api-key': apiKey(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         auth_config: { id: authConfigId },
-        connection: { user_id: workspaceId, data: params },
+        connection: {
+          user_id: workspaceId,
+          state: {
+            authScheme: 'BASIC',
+            val: { status: 'ACTIVE', ...params },
+          },
+        },
       }),
     })
     const json = await res.json() as Record<string, unknown>
