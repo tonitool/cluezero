@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  X, RefreshCcw, CheckCircle2, AlertCircle, Clock, Loader2, Save,
+  X, RefreshCcw, CheckCircle2, AlertCircle, Clock, Loader2, Save, FlaskConical,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,6 +51,8 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   const [schemaName, setSchemaName] = useState('')
   const [tableName, setTableName] = useState('')
   const [warehouse, setWarehouse] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testSteps, setTestSteps] = useState<{ step: string; ok: boolean; detail: string }[] | null>(null)
 
   const fetchConn = useCallback(async () => {
     try {
@@ -95,6 +97,19 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleTest() {
+    setTesting(true); setTestSteps(null)
+    try {
+      const res = await fetch(`/api/connections/${connectionId}/test`)
+      const json = await res.json() as { steps: { step: string; ok: boolean; detail: string }[] }
+      setTestSteps(json.steps ?? [])
+    } catch (err) {
+      setTestSteps([{ step: 'Request', ok: false, detail: String(err) }])
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -235,6 +250,31 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
                 <Label className="text-[11px]">Warehouse</Label>
                 <Input value={warehouse} onChange={e => setWarehouse(e.target.value)} className="mt-1 h-7 text-xs font-mono" placeholder="COMPUTE_WH" />
               </div>
+              <Button
+                size="sm" variant="outline" className="gap-1.5 text-xs w-full"
+                onClick={handleTest} disabled={testing}
+              >
+                {testing
+                  ? <><Loader2 className="size-3 animate-spin" />Testing…</>
+                  : <><FlaskConical className="size-3" />Test connection</>
+                }
+              </Button>
+              {testSteps && (
+                <div className="rounded-lg border border-zinc-100 divide-y divide-zinc-100 overflow-hidden text-[11px]">
+                  {testSteps.map(s => (
+                    <div key={s.step} className="flex items-start gap-2 px-3 py-2 bg-white">
+                      {s.ok
+                        ? <CheckCircle2 className="size-3 text-emerald-500 mt-0.5 shrink-0" />
+                        : <AlertCircle className="size-3 text-rose-500 mt-0.5 shrink-0" />
+                      }
+                      <div className="min-w-0">
+                        <span className="font-medium">{s.step}</span>
+                        {!s.ok && <p className="text-rose-600 break-all mt-0.5">{s.detail}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
