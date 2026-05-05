@@ -79,7 +79,7 @@ export async function discoverSnowflakeMapping(workspaceId: string): Promise<Dis
 
   try {
     const { text } = await generateText({
-      model: openrouter('anthropic/claude-sonnet-4-5'),
+      model: openrouter.chat('anthropic/claude-sonnet-4-5'),
       stopWhen: stepCountIs(20),
       tools,
       system: `You are a data discovery agent. Your job is to explore a Snowflake account and find the table that contains advertising / ad library performance data.

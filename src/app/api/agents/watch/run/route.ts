@@ -416,7 +416,7 @@ export async function POST(req: NextRequest) {
 
     // Run the agent loop — Claude calls tools autonomously up to 8 steps
     const { text, steps } = await generateText({
-      model:    openrouter('anthropic/claude-sonnet-4-5'),
+      model:    openrouter.chat('anthropic/claude-sonnet-4-5'),
       stopWhen: stepCountIs(8),
       system: `You are a competitive intelligence watch agent for ${ownBrand}.
 
