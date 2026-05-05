@@ -129,6 +129,7 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   const [loadingSc, setLoadingSc]   = useState(false)
   const [loadingTb, setLoadingTb]   = useState(false)
   const [loadingCo, setLoadingCo]   = useState(false)
+  const [metaError, setMetaError]   = useState<string | null>(null)
 
   const meta = useCallback(async (params: Record<string, string>) => {
     const qs = new URLSearchParams(params).toString()
@@ -166,9 +167,10 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
   useEffect(() => {
     if (conn?.status !== 'active') return
     setLoadingDb(true)
+    setMetaError(null)
     meta({ type: 'databases' })
-      .then(setDatabases)
-      .catch(() => {})
+      .then(items => { setDatabases(items); if (!items.length) setMetaError('No databases returned — check server logs') })
+      .catch(err => setMetaError(err instanceof Error ? err.message : 'Failed to load databases'))
       .finally(() => setLoadingDb(false))
   }, [conn?.status, meta])
 
@@ -356,6 +358,9 @@ export function ConnectionSettingsPanel({ connectionId, workspaceId, onClose, on
                 <Database className="size-3.5 text-muted-foreground" />
                 <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Data Source</p>
               </div>
+              {metaError && (
+                <p className="text-[11px] text-rose-600 bg-rose-50 rounded px-2 py-1.5 mb-3">{metaError}</p>
+              )}
               <div className="space-y-3">
                 <div>
                   <Label className="text-xs mb-1 block">Database <span className="text-rose-500">*</span></Label>
