@@ -12,12 +12,50 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import {
-  listDatabases,
-  listSchemas,
-  listTables,
-  fetchTableColumnsComposio,
-} from '@/lib/snowflake'
+import { executeAction } from '@/lib/composio'
+
+/** Extract a list of name strings from any Composio action response shape. */
+function extractNames(raw: unknown, keys: string[]): string[] {
+  // raw may be: string (JSON), array, or object with .data / .response / .rows
+  const candidates: unknown[] = []
+
+  function tryArray(val: unknown) {
+    if (Array.isArray(val)) { candidates.push(...val); return true }
+    return false
+  }
+
+  function tryParse(val: unknown): unknown {
+    if (typeof val === 'string') {
+      try { return JSON.parse(val) } catch { return null }
+    }
+    return val
+  }
+
+  const parsed = tryParse(raw)
+  if (!tryArray(parsed)) {
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as Record<string, unknown>
+      const inner = obj.data ?? obj.rows ?? obj.response ?? obj.result
+      const parsedInner = tryParse(inner)
+      if (!tryArray(parsedInner)) tryArray(inner)
+    }
+  }
+
+  return candidates.map(row => {
+    if (typeof row === 'string') return row
+    if (row && typeof row === 'object') {
+      const r = row as Record<string, unknown>
+      for (const k of keys) {
+        if (typeof r[k] === 'string' && r[k]) return r[k] as string
+      }
+      // fallback: first string value
+      for (const v of Object.values(r)) {
+        if (typeof v === 'string' && v) return v
+      }
+    }
+    return ''
+  }).filter(Boolean)
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -55,24 +93,37 @@ export async function GET(
 
   try {
     if (type === 'databases') {
-      const items = await listDatabases(workspaceId)
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_DATABASES', {})
+      console.log('[snowflake-meta] SHOW_DATABASES raw:', JSON.stringify(raw).slice(0, 500))
+      const items = extractNames(raw, ['name', 'DATABASE_NAME', 'database_name'])
       return NextResponse.json({ items })
     }
     if (type === 'schemas' && database) {
-      const items = await listSchemas(workspaceId, database)
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_SCHEMAS', { database })
+      console.log('[snowflake-meta] SHOW_SCHEMAS raw:', JSON.stringify(raw).slice(0, 500))
+      const items = extractNames(raw, ['name', 'SCHEMA_NAME', 'schema_name'])
       return NextResponse.json({ items })
     }
     if (type === 'tables' && database && schema) {
-      const items = await listTables(workspaceId, database, schema)
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_SHOW_TABLES', { database, schema_name: schema })
+      console.log('[snowflake-meta] SHOW_TABLES raw:', JSON.stringify(raw).slice(0, 500))
+      const items = extractNames(raw, ['name', 'TABLE_NAME', 'table_name'])
       return NextResponse.json({ items })
     }
     if (type === 'columns' && database && schema && table) {
-      const result = await fetchTableColumnsComposio(workspaceId, database, schema, table)
-      return NextResponse.json({ items: result.columns ?? [], error: result.error })
+      const raw = await executeAction(workspaceId, 'SNOWFLAKE_BASIC_DESCRIBE_TABLE', {
+        database,
+        schema_name: schema,
+        table_name: table,
+      })
+      console.log('[snowflake-meta] DESCRIBE_TABLE raw:', JSON.stringify(raw).slice(0, 500))
+      const items = extractNames(raw, ['name', 'COLUMN_NAME', 'column_name'])
+      return NextResponse.json({ items })
     }
     return NextResponse.json({ error: 'Invalid type or missing params' }, { status: 400 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to fetch metadata'
+    console.error('[snowflake-meta] error:', msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
