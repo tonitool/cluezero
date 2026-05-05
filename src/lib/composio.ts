@@ -45,6 +45,22 @@ export const INTEGRATION_IDS: Record<string, string | undefined> = {
   clickup: process.env.COMPOSIO_INTEGRATION_CLICKUP,
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Safely extract a string message from whatever the API returns as error/message. */
+function extractError(json: Record<string, unknown>, status: number): string {
+  for (const key of ['error', 'message', 'detail', 'msg']) {
+    const v = json[key]
+    if (typeof v === 'string' && v) return v
+    if (v && typeof v === 'object') {
+      const nested = (v as Record<string, unknown>).message
+      if (typeof nested === 'string' && nested) return nested
+      return JSON.stringify(v)
+    }
+  }
+  return `Composio error ${status}`
+}
+
 // ─── Connection management ────────────────────────────────────────────────────
 
 export interface InitiateConnectionResult {
@@ -85,19 +101,14 @@ export async function initiateConnection(
       }),
     })
 
-    const json = await res.json() as {
-      id?: string
-      status?: string
-      error?: string
-      message?: string
-    }
+    const json = await res.json() as Record<string, unknown>
 
-    if (!res.ok || json.error) {
-      throw new Error(json.error ?? json.message ?? `Composio error: ${res.status}`)
+    if (!res.ok || json['error']) {
+      throw new Error(extractError(json, res.status))
     }
 
     return {
-      connectionId: json.id ?? '',
+      connectionId: String(json['id'] ?? ''),
       redirectUrl: null,
       status: 'active',
     }
@@ -117,20 +128,15 @@ export async function initiateConnection(
     }),
   })
 
-  const json = await res.json() as {
-    connected_account_id?: string
-    redirect_url?: string
-    error?: string
-    message?: string
-  }
+  const oauthJson = await res.json() as Record<string, unknown>
 
-  if (!res.ok || json.error) {
-    throw new Error(json.error ?? json.message ?? `Composio error: ${res.status}`)
+  if (!res.ok || oauthJson['error']) {
+    throw new Error(extractError(oauthJson, res.status))
   }
 
   return {
-    connectionId: json.connected_account_id ?? '',
-    redirectUrl: json.redirect_url ?? null,
+    connectionId: String(oauthJson['connected_account_id'] ?? ''),
+    redirectUrl: typeof oauthJson['redirect_url'] === 'string' ? oauthJson['redirect_url'] : null,
     status: 'pending',
   }
 }
