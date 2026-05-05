@@ -12,27 +12,6 @@
 
 import 'server-only'
 import { Composio } from '@composio/core'
-
-const COMPOSIO_BASE = 'https://backend.composio.dev'
-
-function apiKey() {
-  const key = process.env.COMPOSIO_API_KEY
-  if (!key) throw new Error('COMPOSIO_API_KEY not configured')
-  return key
-}
-
-function extractError(json: Record<string, unknown>, status: number): string {
-  for (const key of ['error', 'message', 'detail', 'msg']) {
-    const v = json[key]
-    if (typeof v === 'string' && v) return v
-    if (v && typeof v === 'object') {
-      const nested = (v as Record<string, unknown>).message
-      if (typeof nested === 'string' && nested) return nested
-      return JSON.stringify(v)
-    }
-  }
-  return `Composio error ${status}`
-}
 export type { AppInfo } from './connectors'
 export { SUPPORTED_CONNECTORS } from './connectors'
 
@@ -66,47 +45,20 @@ export interface InitiateConnectionResult {
   status: string
 }
 
-/**
- * Create a connection for a given app.
- *
- * Basic auth (Snowflake) → raw POST /api/v3/connected_accounts with
- *   connection.data carrying credentials. The SDK's initiate() silently
- *   drops options.data (it only maps options.config → connection.state),
- *   so we must go direct for basic-auth apps.
- *
- * OAuth apps → SDK connectedAccounts.initiate() which handles the
- *   correct link/redirect flow.
- */
 export async function initiateConnection(
   workspaceId: string,
   appName: string,
-  params: Record<string, string> = {},
+  _params: Record<string, string> = {},
   redirectUri?: string,
 ): Promise<InitiateConnectionResult> {
   const authConfigId = INTEGRATION_IDS[appName]
   if (!authConfigId) throw new Error(`No auth config ID configured for ${appName}`)
 
-  // ── Basic auth (Snowflake) ──────────────────────────────────────────────────
-  if (appName === 'snowflake') {
-    // Use connection.data (not state) for BASIC auth — auth config validators
-    // read credentials from data. Strip empty strings to avoid "missing field" errors.
-    const data = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== ''))
-    const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts`, {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        auth_config: { id: authConfigId },
-        connection: { user_id: workspaceId, data },
-      }),
-    })
-    const json = await res.json() as Record<string, unknown>
-    if (!res.ok) throw new Error(extractError(json, res.status))
-    return { connectionId: String(json['id'] ?? ''), redirectUrl: null, status: 'active' }
-  }
-
-  // ── OAuth apps ──────────────────────────────────────────────────────────────
+  // ── All apps (OAuth + BASIC) — use Composio-hosted flow ────────────────────
+  // link() creates a Composio Connect Link (platform.composio.dev/link/…) that
+  // hosts the credential form for BASIC auth apps and the OAuth consent for OAuth apps.
   const client = getComposioClient()
-  const request = await client.connectedAccounts.initiate(workspaceId, authConfigId, {
+  const request = await client.connectedAccounts.link(workspaceId, authConfigId, {
     callbackUrl: redirectUri,
   })
   const raw = (request.status ?? '').toUpperCase()

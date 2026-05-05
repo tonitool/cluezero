@@ -29,36 +29,6 @@ export const SUPPORTED_CONNECTORS: AppInfo[] = [
     authSchemes: ['BASIC'],
     actionsCount: 15,
     categories: ['data-warehouse'],
-    inputFields: [
-      {
-        name: 'Account ID',
-        label: 'Account ID',
-        placeholder: 'myorganization-myaccount',
-        description: 'Your Snowflake account ID. Format: myorganization-myaccount (find it in the bottom-left account switcher in Snowsight).',
-        required: true,
-      },
-      {
-        name: 'username',
-        label: 'Username',
-        placeholder: 'svc_cluezero',
-        description: 'A service account username in Snowflake. No MFA required.',
-        required: true,
-      },
-      {
-        name: 'password',
-        label: 'Password',
-        placeholder: '••••••••••••',
-        description: 'Password for the service account.',
-        required: true,
-      },
-      {
-        name: 'role',
-        label: 'Role',
-        placeholder: 'SYSADMIN',
-        description: 'Snowflake role to use. SYSADMIN or any role with SELECT on your tables.',
-        required: false,
-      },
-    ],
   },
   {
     key: 'googleads',
