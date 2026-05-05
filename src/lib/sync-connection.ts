@@ -1,30 +1,11 @@
-/**
- * sync-connection.ts — Composio Snowflake → Supabase sync engine (streamlined)
- *
- * Improvements:
- * - Chunked SQL queries with LIMIT/OFFSET to avoid Composio timeouts
- * - Incremental sync (only fetch rows since last sync)
- * - Larger Supabase batch sizes (500 rows)
- * - Retry logic for transient failures
- * - Progress tracking only at start/end (not every chunk)
- * - is_new_ad flag on spend records for new vs existing spend split
- */
-
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { executeAction } from '@/lib/composio'
-import { mapRow, type SnowflakeMapping } from '@/lib/snowflake'
+import { mapRow, detectDateColumn, type SnowflakeMapping } from '@/lib/snowflake'
 import { detectAlerts } from '@/lib/detect-alerts'
 
-// Batch size for Supabase inserts (PostgREST handles up to ~1000 well)
 const BATCH_SIZE = 500
-
-// Chunk size for Composio SQL queries (avoids response size limits)
 const QUERY_CHUNK_SIZE = 2000
-
-// Max retries for transient failures
 const MAX_RETRIES = 3
-
-// ─── Types ────────────────────────────────────────────────────────────────
 
 interface MappedRow {
   brand: string
@@ -61,8 +42,6 @@ interface AdRow {
   format_type?: string
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 function weekStart(dateStr: string): string {
   const d = new Date(dateStr)
   const day = d.getUTCDay()
@@ -78,9 +57,6 @@ function supabaseAdmin() {
   )
 }
 
-/**
- * Execute a Snowflake SQL query via Composio with retry logic.
- */
 async function executeSnowflakeQuery(
   workspaceId: string,
   sql: string,
@@ -96,11 +72,10 @@ async function executeSnowflakeQuery(
       }) as { data?: unknown; response?: string; error?: string }
 
       if (result?.error) throw new Error(result.error)
-
       return parseResultRows(result)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
       if (attempt === retries) throw err
+      const msg = err instanceof Error ? err.message : String(err)
       console.log(`[sync] Query attempt ${attempt} failed: ${msg}, retrying...`)
       await new Promise(r => setTimeout(r, 1000 * attempt))
     }
@@ -121,49 +96,35 @@ function parseResultRows(result: { data?: unknown; response?: string }): Record<
   return []
 }
 
-/**
- * Fetch rows from Snowflake in chunks using LIMIT/OFFSET.
- * This avoids Composio response size limits on large tables.
- */
 async function fetchRowsChunked(
   workspaceId: string,
   mapping: SnowflakeMapping,
   since?: string,
   onProgress?: (fetched: number) => void,
 ): Promise<Record<string, unknown>[]> {
-  // Build SELECT with only mapped columns
-  const cols = new Set<string>()
-  cols.add(mapping.colBrand)
-  cols.add(mapping.colDate)
-  if (mapping.colHeadline) cols.add(mapping.colHeadline)
-  if (mapping.colSpend) cols.add(mapping.colSpend)
-  if (mapping.colImpressions) cols.add(mapping.colImpressions)
-  if (mapping.colReach) cols.add(mapping.colReach)
-  if (mapping.colPi) cols.add(mapping.colPi)
-  if (mapping.colFunnel) cols.add(mapping.colFunnel)
-  if (mapping.colTopic) cols.add(mapping.colTopic)
-  if (mapping.colThumbnail) cols.add(mapping.colThumbnail)
-  if (mapping.colAdId) cols.add(mapping.colAdId)
-  if (mapping.colPlatform) cols.add(mapping.colPlatform)
-  if (mapping.colIsActive) cols.add(mapping.colIsActive)
-  if (mapping.colFormat) cols.add(mapping.colFormat)
+  // Sample one row to detect the date column name for incremental filtering
+  let whereClause = ''
+  if (since) {
+    const sample = await executeSnowflakeQuery(
+      workspaceId,
+      `SELECT * FROM "${mapping.table}" LIMIT 1`,
+      mapping,
+    )
+    const dateCol = sample[0] ? detectDateColumn(sample[0]) : null
+    if (dateCol) {
+      whereClause = `WHERE "${dateCol}" >= '${since}'`
+    }
+  }
 
-  const colList = [...cols].map(c => `"${c}"`).join(', ')
-  const whereClause = since ? `WHERE "${mapping.colDate}" >= '${since}'` : ''
-  const baseSql = `SELECT ${colList} FROM ${mapping.table} ${whereClause}`
-
-  // First, get the total count
-  const countSql = `SELECT COUNT(*) as total FROM ${mapping.table} ${whereClause}`
+  const countSql = `SELECT COUNT(*) as total FROM "${mapping.table}" ${whereClause}`
   const countRows = await executeSnowflakeQuery(workspaceId, countSql, mapping)
   const totalCount = Number(countRows[0]?.TOTAL ?? countRows[0]?.total ?? 0)
-
   console.log(`[sync] Total rows to fetch: ${totalCount}`)
 
   const allRows: Record<string, unknown>[] = []
-
   for (let offset = 0; offset < totalCount; offset += QUERY_CHUNK_SIZE) {
-    const chunkSql = `${baseSql} LIMIT ${QUERY_CHUNK_SIZE} OFFSET ${offset}`
-    const rows = await executeSnowflakeQuery(workspaceId, chunkSql, mapping)
+    const sql = `SELECT * FROM "${mapping.table}" ${whereClause} LIMIT ${QUERY_CHUNK_SIZE} OFFSET ${offset}`
+    const rows = await executeSnowflakeQuery(workspaceId, sql, mapping)
     allRows.push(...rows)
     onProgress?.(allRows.length)
     console.log(`[sync] Fetched ${allRows.length} / ${totalCount} rows`)
@@ -172,16 +133,12 @@ async function fetchRowsChunked(
   return allRows
 }
 
-// ─── Main entry point ───────────────────────────────────────────────────────
-
 export async function syncConnection(
   connectionId: string,
   workspaceId: string,
 ): Promise<{ ok: boolean; fetched: number; inserted: number; errors: string[] }> {
   const db = supabaseAdmin()
   const errors: string[] = []
-
-  // ── 1. Load connection config ──────────────────────────────────────────
 
   const { data: conn, error: connErr } = await db
     .from('connections')
@@ -201,33 +158,16 @@ export async function syncConnection(
   await setStatus(db, connectionId, 'syncing')
 
   const cfg = (conn.config ?? {}) as Record<string, string>
-
   const mapping: SnowflakeMapping = {
     database: cfg.database ?? '',
-    schema: cfg.schemaName ?? 'PUBLIC',
-    table: cfg.tableName ?? '',
-    colBrand: cfg.colBrand ?? '',
-    colDate: cfg.colDate ?? '',
-    colHeadline: cfg.colHeadline ?? undefined,
-    colSpend: cfg.colSpend ?? undefined,
-    colImpressions: cfg.colImpressions ?? undefined,
-    colReach: cfg.colReach ?? undefined,
-    colPi: cfg.colPi ?? undefined,
-    colFunnel: cfg.colFunnel ?? undefined,
-    colTopic: cfg.colTopic ?? undefined,
-    colThumbnail: cfg.colThumbnail ?? undefined,
-    colAdId: cfg.colAdId ?? undefined,
-    colPlatform: cfg.colPlatform ?? undefined,
-    colIsActive: cfg.colIsActive ?? undefined,
-    colFormat: cfg.colFormat ?? undefined,
+    schema:   cfg.schemaName ?? 'PUBLIC',
+    table:    cfg.tableName ?? '',
   }
 
-  if (!mapping.database || !mapping.table || !mapping.colBrand || !mapping.colDate) {
-    await setStatus(db, connectionId, 'error', 'Missing database, table, or required column mapping')
-    return { ok: false, fetched: 0, inserted: 0, errors: ['Missing database, table, or required column mapping'] }
+  if (!mapping.database || !mapping.table) {
+    await setStatus(db, connectionId, 'error', 'Missing database or table name')
+    return { ok: false, fetched: 0, inserted: 0, errors: ['Missing database or table name'] }
   }
-
-  // ── 2. Incremental sync: only fetch rows since last sync ───────────────
 
   const lastSynced = conn.last_sync_at ? new Date(conn.last_sync_at).toISOString().slice(0, 10) : undefined
   console.log(`[sync] Incremental sync from: ${lastSynced ?? 'beginning'}`)
@@ -258,16 +198,20 @@ export async function syncConnection(
     return { ok: true, fetched: 0, inserted: 0, errors: [] }
   }
 
-  // ── 3. Map all rows ────────────────────────────────────────────────────
+  const mapped: MappedRow[] = rawRows.map(raw => mapRow(raw))
 
-  const mapped: MappedRow[] = rawRows.map(raw => mapRow(raw, mapping))
+  // Validate that we can at least detect brand and date
+  const sample = mapped[0]
+  if (!sample.brand || !sample.date) {
+    const cols = Object.keys(rawRows[0]).join(', ')
+    const msg = `Could not detect brand or date column. Available columns: ${cols}`
+    await setStatus(db, connectionId, 'error', msg)
+    return { ok: false, fetched: 0, inserted: 0, errors: [msg] }
+  }
 
   await db.from('connections').update({ sync_total: mapped.length, sync_progress: 0 }).eq('id', connectionId)
 
-  // ── 4. Ensure all brands exist ─────────────────────────────────────────
-
   const brandCache = new Map<string, string>()
-
   const { data: existingBrands } = await db
     .from('tracked_brands')
     .select('id, name')
@@ -294,18 +238,15 @@ export async function syncConnection(
       platform: 'snowflake' as const,
       is_own_brand: false,
     }))
-
     const { error: brandInsertErr } = await db.from('tracked_brands').insert(brandRows)
     if (brandInsertErr && !brandInsertErr.message.includes('duplicate')) {
       errors.push(`Brand insert: ${brandInsertErr.message}`)
     }
-
     const { data: allBrands } = await db
       .from('tracked_brands')
       .select('id, name')
       .eq('workspace_id', workspaceId)
       .eq('platform', 'snowflake')
-
     brandCache.clear()
     for (const b of allBrands ?? []) {
       brandCache.set(b.name.toLowerCase().trim(), b.id)
@@ -314,14 +255,11 @@ export async function syncConnection(
 
   console.log(`[sync] Brand cache: ${brandCache.size} brands`)
 
-  // ── 5. Batch insert ads, spend, enrichments ────────────────────────────
-
   const connPrefix = connectionId.slice(0, 8)
   let totalInserted = 0
   let processed = 0
   const validStages = new Set(['see', 'think', 'do', 'care'])
 
-  // Pre-load ALL existing ad IDs for this workspace to avoid per-chunk SELECTs
   const { data: allExistingAds } = await db
     .from('ads')
     .select('id, ad_id')
@@ -334,11 +272,9 @@ export async function syncConnection(
 
   console.log(`[sync] Pre-loaded ${adIdToUuid.size} existing ads`)
 
-  // Process in batches
   for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
     const chunk = mapped.slice(i, i + BATCH_SIZE)
 
-    // Build ad rows (deduplicated), spend entries, and enrichments
     const adRowByAdId = new Map<string, AdRow>()
     const spendEntries: { adId: string; row: MappedRow }[] = []
     const enrichmentByAdId = new Map<string, MappedRow>()
@@ -384,45 +320,29 @@ export async function syncConnection(
     }
 
     const adRows = [...adRowByAdId.values()]
-    if (adRows.length === 0) {
-      processed += chunk.length
-      continue
-    }
+    if (adRows.length === 0) { processed += chunk.length; continue }
 
-    // Filter to only new ads
     const newAdRows = adRows.filter(r => !adIdToUuid.has(r.ad_id))
-
     if (newAdRows.length > 0) {
-      const { data: inserted } = await db
-        .from('ads')
-        .insert(newAdRows)
-        .select('id, ad_id')
-
+      const { data: inserted } = await db.from('ads').insert(newAdRows).select('id, ad_id')
       if (inserted) {
         totalInserted += inserted.length
-        for (const row of inserted) {
-          adIdToUuid.set(row.ad_id, row.id)
-        }
+        for (const row of inserted) adIdToUuid.set(row.ad_id, row.id)
       }
     }
-
-    // ── Build spend records with is_new_ad flag ──────────────────────────
 
     const spendRecords: Record<string, unknown>[] = []
     for (const { adId, row: r } of spendEntries) {
       const uuid = adIdToUuid.get(adId)
       if (!uuid) continue
       if (r.spend == null && r.impressions == null && r.reach == null) continue
-
-      const week = weekStart(r.date)
-      const isNewAd = !adIdToUuid.has(adId) || newAdRows.some(n => n.ad_id === adId)
       spendRecords.push({
         ad_id: uuid,
-        week_start: week,
+        week_start: weekStart(r.date),
         est_spend_eur: r.spend,
         est_impressions: r.impressions,
         est_reach: r.reach,
-        is_new_ad: isNewAd,
+        is_new_ad: newAdRows.some(n => n.ad_id === adId),
       })
     }
 
@@ -430,12 +350,8 @@ export async function syncConnection(
       const { error: spendErr } = await db
         .from('ad_spend_estimates')
         .upsert(spendRecords, { onConflict: 'ad_id,week_start' })
-      if (spendErr) {
-        errors.push(`Spend upsert: ${spendErr.message}`)
-      }
+      if (spendErr) errors.push(`Spend upsert: ${spendErr.message}`)
     }
-
-    // ── Build enrichment records ────────────────────────────────────────
 
     const enrichments: Record<string, unknown>[] = []
     for (const [adId, r] of enrichmentByAdId) {
@@ -444,9 +360,7 @@ export async function syncConnection(
       const enr: Record<string, unknown> = { ad_id: uuid }
       if (r.funnelStage) {
         const norm = r.funnelStage.toLowerCase()
-        if (validStages.has(norm)) {
-          enr.funnel_stage = norm.charAt(0).toUpperCase() + norm.slice(1)
-        }
+        if (validStages.has(norm)) enr.funnel_stage = norm.charAt(0).toUpperCase() + norm.slice(1)
       }
       if (r.topic) enr.topic = r.topic.trim()
       if (enr.funnel_stage || enr.topic) enrichments.push(enr)
@@ -456,15 +370,11 @@ export async function syncConnection(
       const { error: enrichErr } = await db
         .from('ad_enrichments')
         .upsert(enrichments, { onConflict: 'ad_id' })
-      if (enrichErr) {
-        errors.push(`Enrichment upsert: ${enrichErr.message}`)
-      }
+      if (enrichErr) errors.push(`Enrichment upsert: ${enrichErr.message}`)
     }
 
     processed += chunk.length
   }
-
-  // ── 6. Done ────────────────────────────────────────────────────────────
 
   console.log(`[sync] Complete: ${totalInserted} new ads, ${processed} rows processed, ${errors.length} errors`)
 
