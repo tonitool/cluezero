@@ -88,14 +88,18 @@ export async function initiateConnection(
 
   // ── Basic auth (Snowflake) ──────────────────────────────────────────────────
   if (appName === 'snowflake') {
-    // Strip empty strings — Composio treats "" as missing for required fields
-    const data = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== ''))
+    // Strip empty strings before sending — Composio rejects "" for required fields.
+    // Field names (username, password, account_id) must match the V3 BASIC auth schema exactly.
+    const credentials = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== ''))
     const res = await fetch(`${COMPOSIO_BASE}/api/v3/connected_accounts`, {
       method: 'POST',
       headers: { 'x-api-key': apiKey(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         auth_config: { id: authConfigId },
-        connection: { user_id: workspaceId, data },
+        connection: {
+          user_id: workspaceId,
+          state: { authScheme: 'BASIC', val: { status: 'ACTIVE', ...credentials } },
+        },
       }),
     })
     const json = await res.json() as Record<string, unknown>
