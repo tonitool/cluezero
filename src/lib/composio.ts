@@ -93,11 +93,13 @@ export async function executeAction(
   workspaceId: string,
   actionName: string,
   params: Record<string, unknown>,
+  version?: string,
 ): Promise<unknown> {
   const client = getComposioClient()
   const result = await client.tools.execute(actionName, {
     userId: workspaceId,
     arguments: params,
+    ...(version ? { version } : {}),
   })
   if (!result.successful) {
     const msg = typeof result.data === 'string' ? result.data : JSON.stringify(result.data)
