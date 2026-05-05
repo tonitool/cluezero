@@ -31,7 +31,7 @@ export const SUPPORTED_CONNECTORS: AppInfo[] = [
     categories: ['data-warehouse'],
     inputFields: [
       {
-        name: 'account_id',
+        name: 'Account ID',
         label: 'Account ID',
         placeholder: 'myorganization-myaccount',
         description: 'Your Snowflake account ID. Format: myorganization-myaccount (find it in the bottom-left account switcher in Snowsight).',
